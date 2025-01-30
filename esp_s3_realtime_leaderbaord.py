@@ -136,6 +136,16 @@ def format_time(seconds):
     secs = int(seconds % 60)
     return "{:02d}:{:02d}:{:02d}".format(hours, minutes, secs)
 
+def generate_leaderboard_csv(leaderboard):
+    """Generates CSV data from the leaderboard data."""
+    csv_data = "Rank,Name,Time,Penalty,Final Time\n"
+    for i, entry in enumerate(leaderboard):
+        penalty_sec = entry.get("penalty", 0)
+        final_time_sec = entry["time"]
+        original_time_sec = final_time_sec - penalty_sec if penalty_sec > 0 else final_time_sec
+        csv_data += f"{i + 1},{entry['name']},{format_time(original_time_sec)},{format_time(penalty_sec)},{format_time(final_time_sec)}\n"
+    return csv_data
+
 # --- HTML for Webpages ---
 def generate_leaderboard_html(leaderboard):
     """Generates the HTML content for the leaderboard webpage."""
@@ -159,12 +169,13 @@ def generate_leaderboard_html(leaderboard):
             }
             .button-link { display: inline-block; padding: 12px 25px; background-color: #428bca; color: white; text-decoration: none; border-radius: 5px; font-size: 1em; transition: background-color 0.3s ease; }
             .button-link:hover { background-color: #3071a9; }
-            .button-link2 { display: inline-block; padding: 12px 25px; background-color: #5bc0de; color: white; text-decoration: none; border-radius: 5px; font-size: 1em; transition: background-color 0.3s ease; }
-            .button-link2:hover { background-color: #31b0d5; }
-            .reset-button { display: inline-block; padding: 12px 25px; background-color: #d9534f; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 1em; transition: background-color 0.3s ease; text-decoration: none;}
-            .reset-button:hover { background-color: #c9302c; }
-            table { border-collapse: collapse; width: 80%; max-width: 800px; margin: 20px auto; }
+
+            table { border-collapse: collapse; width: 100%; /* Make table width 100% of container */ margin: 20px auto; } /* Keep auto margin for centering if needed */
             th, td { border: 1px solid black; padding: 8px; text-align: left; }
+            /* Ensure table is centered in container */
+            #leaderboard { display: flex; justify-content: center; } /* Center the table within leaderboard div */
+            #leaderboard table { width: auto; max-width: 100%; } /* Adjust table width if needed within centered context */
+
 
         </style>
         <script>
@@ -250,16 +261,18 @@ def generate_admin_html(config):
             label { display: block; margin-top: 15px; font-weight: bold; }
             input[type="number"], select, input[type="password"] { width: calc(100% - 20px); padding: 10px; margin-top: 8px; margin-bottom: 15px; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box; font-size: 1em; }
             select { appearance: none; -webkit-appearance: none; -moz-appearance: none; background-image: url('data:image/svg+xml;utf8,<svg fill="black" height="24" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg"><path d="M7 10l5 5 5-5z"/><path d="M0 0h24v24H0z" fill="none"/></svg>'); background-repeat: no-repeat; background-position-x: 100%; background-position-y: 5px; } /* Custom arrow for select */
-            button, .button-link, .button-link2, .reset-button { display: inline-block; padding: 12px 25px; background-color: #5cb85c; color: white; text-decoration: none; border-radius: 5px; border: none; cursor: pointer; font-size: 1em; transition: background-color 0.3s ease; margin-top: 10px; }
-            button:hover, .button-link:hover, .button-link2:hover, .reset-button:hover { background-color: #4cae4c; }
+            button, .button-link, .button-link2, .reset-button, .export-button { display: inline-block; padding: 12px 25px; background-color: #5cb85c; color: white; text-decoration: none; border-radius: 5px; border: none; cursor: pointer; font-size: 1em; transition: background-color 0.3s ease; margin-top: 10px; }
+            button:hover, .button-link:hover, .button-link2:hover, .reset-button:hover, .export-button:hover { background-color: #4cae4c; }
             .button-link { background-color: #428bca; }
             .button-link:hover { background-color: #3071a9; }
             .button-link2 { background-color: #5bc0de; color: white; } /* Example different button */
             .button-link2:hover { background-color: #31b0d5; }
             .reset-button { background-color: #d9534f; }
             .reset-button:hover { background-color: #c9302c; }
-            .button-container, .button-container2, .reset-button-container { text-align: center; margin-top: 20px; }
-            .button-link, .button-link2 { width: auto; display: block; margin: 15px auto; max-width: 200px; } /* Button links as blocks */
+            .export-button { background-color: orange; }
+            .export-button:hover { background-color: darkorange; }
+            .button-container, .button-container2, .reset-button-container, .export-button-container { text-align: center; margin-top: 20px; }
+            .button-link, .button-link2, .export-button { width: auto; display: block; margin: 15px auto; max-width: 200px; } /* Button links as blocks */
             .reset-section { margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee; }
             .form-group { margin-bottom: 20px; }
             .form-group:last-child { margin-bottom: 0; }
@@ -325,6 +338,10 @@ def generate_admin_html(config):
                 </div>
             </form>
 
+            <div class="export-button-container">
+                <a href="/leaderboard_excel" class="export-button">Export to Excel</a>
+            </div>
+
             <div class="reset-section">
                 <h2>Reset Leaderboard</h2>
                 <div class="form-group">
@@ -372,6 +389,10 @@ while True:
     elif method == "GET" and path == "/admin":
         admin_html = generate_admin_html(correct_answers_config)
         conn.sendall(f"HTTP/1.1 200 OK\nContent-Type: text/html\n\n{admin_html}".encode())
+    elif method == "GET" and path == "/leaderboard_excel":
+        leaderboard = load_leaderboard()
+        csv_data = generate_leaderboard_csv(leaderboard)
+        conn.sendall(f"HTTP/1.1 200 OK\nContent-Type: text/csv\nContent-Disposition: attachment; filename=\"leaderboard.csv\"\n\n{csv_data}".encode())
     elif method == "POST" and path == "/add":
         # Handle adding a new entry to the leaderboard - Expecting JSON data
         try:
@@ -424,7 +445,7 @@ while True:
         password_attempt = post_data.get("password")
         if password_attempt == ADMIN_PASSWORD:
             clear_leaderboard()
-            conn.sendall(b"HTTP/1.1 200 OK\nContent-Type: text/html\n\n<html><body><h1>Leaderboard Reset!</h1><div style='text-align: center; margin-top: 20px;'> <a href='/admin' style='display: inline-block; padding: 10px 20px; background-color: #008CBA; color: white; text-decoration: none; border-radius: 5px; border: none; cursor: pointer; font-size: 1em; margin-right: 10px;'>Back to Admin Page</a>  <a href='/' style='display: inline-block; padding: 10px 20px; background-color: #4CAF50; color: white; text-decoration: none; border-radius: 5px; border: none; cursor: pointer; font-size: 1em;'>Back to Leaderboard</a> </div></body></html>")
+            conn.sendall(b"HTTP/1.1 200 OK\nContent-Type: text/html\n\n<html><body><h1>Leaderboard Reset!</h1><div style='text-align: center; margin-top: 20px;'> <a href='/admin' class='button-link' style='background-color: #008CBA; text-decoration: none;'>Back to Admin Page</a>  <a href='/' class='button-link' style='background-color: #4CAF50; text-decoration: none;'>Back to Leaderboard</a> </div></body></html>") # Made them buttons, added text-decoration: none;
         else:
             conn.sendall(b"HTTP/1.1 403 Forbidden\nContent-Type: text/plain\n\nIncorrect Admin Password")
 
@@ -480,7 +501,7 @@ while True:
             save_correct_answers_config(correct_answers_config)
 
             conn.sendall(
-                b"HTTP/1.1 200 OK\nContent-Type: text/html\n\n<html><body><h1>Settings Saved!</h1><div style='text-align: center; margin-top: 20px;'> <a href='/admin' style='display: inline-block; padding: 10px 20px; background-color: #008CBA; color: white; text-decoration: none; border-radius: 5px; border: none; cursor: pointer; font-size: 1em; margin-right: 10px;'>Back to Admin Page</a>  <a href='/' style='display: inline-block; padding: 10px 20px; background-color: #4CAF50; color: white; text-decoration: none; border-radius: 5px; border: none; cursor: pointer; font-size: 1em;'>Back to Leaderboard</a> </div></body></html>"
+                b"HTTP/1.1 200 OK\nContent-Type: text/html\n\n<html><body><h1>Settings Saved!</h1><div style='text-align: center; margin-top: 20px;'> <a href='/admin' class='button-link' style='background-color: #008CBA; text-decoration: none;'>Back to Admin Page</a>  <a href='/' class='button-link' style='background-color: #4CAF50; text-decoration: none;'>Back to Leaderboard</a> </div></body></html>" # Made them buttons, added text-decoration: none;
             )
 
         except Exception as e:
