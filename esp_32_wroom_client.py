@@ -9,9 +9,9 @@ import sdcard
 import json  # Import the json library
 
 # --- Wi-Fi Connection Details ---
-ssid = "MyESP32S3AP"
-password = "yourpassword"
-server_ip = "192.168.4.1"
+ssid = "MyESP32S3AP"  # IMPORTANT: Match the SSID from your server.py
+password = "yourpassword" # IMPORTANT: Match the password from your server.py
+server_ip = "192.168.4.1" # IMPORTANT: Change this to the IP address printed by your server.py
 server_port = 80
 
 # ----- SPI Pin Configurations -----
@@ -59,7 +59,8 @@ reader = mfrc522.MFRC522(sck=sck_rfid, mosi=mosi_rfid, miso=miso_rfid, rst=rst_r
 
 # ----- Target RFID UIDs -----
 START_UID = [0xF3, 0xC7, 0x1A, 0x13, 0x3D]  # Start tag UID
-STOP_UID = [0x00, 0x64, 0x56, 0xD3, 0xE1]  # Stop tag UID
+STOP_TIMER_UID = [0x00, 0x64, 0x56, 0xD3, 0xE1]  # Stop Timer tag UID - New UID for stopping timer only
+WIFI_SEND_DATA_UID = [0xD3, 0x34, 0xE7, 0x11, 0x11] # UID to trigger Wi-Fi connection and data send - New UID for Wi-Fi and Send
 QUESTIONS = {  # Use a dictionary to map UIDs to question numbers
     "0x730xED0xBF0x2C0x0D": 1,
     "0x230xBA0xCB0x2C0x7E": 2,
@@ -89,7 +90,7 @@ answers = {}  # Dictionary to store selected answers: {question_num: answer}
 
 # ----- Helper Functions -----
 def byte_array_to_str(byte_arr):
-    """Converts a byte array to a hex string (e.g., [0x12, 0xAB] -> "0x120xAB")."""
+    """Converts a byte array to a byte array to a hex string (e.g., [0x12, 0xAB] -> "0x120xAB")."""
     return "".join(["0x{:02X}".format(x) for x in byte_arr])
 
 def save_time_to_sdcard(elapsed_time):
@@ -160,7 +161,7 @@ def delete_answer_time_files():
 
 
 # --- Function to Send Data to Server ---
-def send_data(name, sta): # Pass sta object, no time_taken argument
+def send_data(name, sta): # Pass sta object
     retries = 3
     retry_delay = 1
 
@@ -177,25 +178,31 @@ def send_data(name, sta): # Pass sta object, no time_taken argument
         "answers": answers_from_sd # Include answers in payload
     }
     json_data = json.dumps(data_payload) # Convert to JSON string
+    print("JSON Payload to send:", json_data) # Debug print JSON data
 
     for attempt in range(retries):
         try:
+            print(f"Attempting to connect to server: {server_ip}:{server_port} (Attempt {attempt+1}/{retries})") # Debug connect attempt
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.settimeout(5)
+            s.settimeout(5) # Set timeout for connection and receiving
             s.connect((server_ip, server_port))
+            print("Connected to server.") # Debug connection success
 
             request = f"POST /add HTTP/1.1\r\nHost: {server_ip}\r\nContent-Type: application/json\r\nContent-Length: {len(json_data)}\r\n\r\n{json_data}" # Content-Type: application/json
+            print("Sending HTTP Request:\n", request) # Debug print HTTP request
 
             s.sendall(request.encode())
+            print("Request sent.") # Debug request send
 
             response = s.recv(1024)
-            print("Server Response:", response.decode())
+            print("Server Response:", response.decode()) # Debug server response
 
             s.close()
+            print("Socket closed.") # Debug socket close
             return True
 
         except Exception as e:
-            print(f"Error sending data (attempt {attempt+1}/{retries}): {e}")
+            print(f"Error sending data (attempt {attempt+1}/{retries}): {e}") # Keep original error print
             if attempt < retries - 1:
                 print(f"Retrying in {retry_delay} seconds...")
                 time.sleep(retry_delay)
@@ -204,11 +211,15 @@ def send_data(name, sta): # Pass sta object, no time_taken argument
                 print("Max retries reached. Giving up.")
                 return False
         finally:
-            sta.disconnect()
-            while sta.isconnected():
+            if sta.isconnected(): # Only disconnect if still connected
                 print("Disconnecting from Wi-Fi...")
-                time.sleep(1)
-            print("Disconnected from Wi-Fi")
+                sta.disconnect()
+                while sta.isconnected():
+                    print("Waiting for Wi-Fi disconnect...")
+                    time.sleep(0.5)
+                print("Disconnected from Wi-Fi")
+            else:
+                print("Wi-Fi already disconnected or not connected.")
 
 
 def handle_start_card(uid_str):
@@ -223,7 +234,7 @@ def handle_start_card(uid_str):
     timer_stopped = False
     current_question = 0
     answers = {}
-    print("Project Reset")
+    print("Project Reset - Timer Started")
     delete_answer_time_files() # Delete answers.txt and timer_log.txt
     create_empty_answers_file() # Create a new empty answers.txt
     led1_pin.value(1)
@@ -231,8 +242,8 @@ def handle_start_card(uid_str):
     led1_pin.value(0)
     led2_pin.value(0)
 
-def handle_stop_card(uid_str):
-    """Handles the STOP card logic."""
+def handle_stop_card(uid_str, uid_bytes):
+    """Handles the STOP card logic (only stops timer)."""
     global timer_running, timer_stopped, elapsed_time
 
     if timer_running and not timer_stopped:
@@ -248,29 +259,55 @@ def handle_stop_card(uid_str):
         save_time_to_sdcard(elapsed_time)
 
         answers = read_answers_from_sdcard()
-
         print("Data saved to SD card.")
+    else:
+        print("Timer is not running or already stopped.")
 
-        time.sleep(2) # Increased delay to 2 seconds
+def handle_wifi_send_card(uid_str, uid_bytes):
+    """Handles the Wi-Fi connect and send data card logic."""
+    global timer_stopped
 
-        # --- Connect to Wi-Fi (Only when STOP card is scanned) ---
+    if timer_stopped: # Only connect if timer is stopped
+        print("Connecting to Wi-Fi and Sending Data...")
+        time.sleep(1) # Keep a small delay before Wi-Fi connection
+
+        # --- Connect to Wi-Fi (Only when WIFI_SEND_DATA_UID card is scanned) ---
         sta = network.WLAN(network.STA_IF) # Create sta object here
         sta.active(True)
+        print(f"Attempting to connect to Wi-Fi SSID: '{ssid}'") # Debug SSID
         sta.connect(ssid, password)
 
-        while not sta.isconnected():
+        wifi_connect_timeout = time.time() + 10 # 10 seconds timeout for Wi-Fi connection
+        while not sta.isconnected() and time.time() < wifi_connect_timeout:
             print("Connecting to Wi-Fi...")
             time.sleep(1)
 
-        print("Connected to Wi-Fi. IP:", sta.ifconfig()[0])
-        rssi = sta.status('rssi') # Get RSSI
-        print(f"Wi-Fi RSSI: {rssi} dBm") # Print RSSI
+        if sta.isconnected():
+            print("Connected to Wi-Fi. IP:", sta.ifconfig()[0])
+            rssi = sta.status('rssi') # Get RSSI
+            print(f"Wi-Fi RSSI: {rssi} dBm") # Print RSSI
 
-        # --- Send Data to Server ---
-        if send_data("Client1", sta): # Call send_data, no time argument needed
-            print("Data sent to server successfully.")
+            # --- Send Data to Server ---
+            if send_data("Client1", sta): # Call send_data, no time argument needed
+                print("Data sent to server successfully.")
+                led1_pin.value(1) # Indicate success with LED
+                time.sleep(2)
+                led1_pin.value(0)
+            else:
+                print("Failed to send data after multiple retries.")
+                led1_pin.value(0) # Indicate failure with LED off
+                led2_pin.value(1) # Maybe a different LED for failure?
+                time.sleep(2)
+                led2_pin.value(0)
+
         else:
-            print("Failed to send data after multiple retries.")
+            print("Wi-Fi connection timed out. Check SSID/password and Wi-Fi AP.")
+            led2_pin.value(1) # Indicate Wi-Fi failure
+            time.sleep(2)
+            led2_pin.value(0)
+
+    else:
+        print("Timer is not stopped. Stop timer first to send data.")
 
 
 def handle_question_card(uid_str, question_num):
@@ -310,7 +347,7 @@ def handle_question_card(uid_str, question_num):
 def main():
     """Main program loop."""
     create_empty_answers_file() # Create answers.txt at startup if it doesn't exist
-
+    print("Client Started. Waiting for RFID cards...")
 
     while True:
         reader.init()
@@ -324,8 +361,10 @@ def main():
 
                 if uid == START_UID:
                     handle_start_card(uid_str)
-                elif uid == STOP_UID:
-                    handle_stop_card(uid_str)
+                elif uid == STOP_TIMER_UID:
+                    handle_stop_card(uid_str, uid) # Pass uid bytes
+                elif uid == WIFI_SEND_DATA_UID:
+                    handle_wifi_send_card(uid_str, uid) # Pass uid bytes
                 else:
                     question_num = QUESTIONS.get(uid_str)
                     if question_num:
