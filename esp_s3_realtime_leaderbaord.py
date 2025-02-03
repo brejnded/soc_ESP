@@ -40,7 +40,7 @@ def save_leaderboard(leaderboard):
 
 def load_correct_answers_config():
     """Loads correct answers and penalty config from a JSON file."""
-    default_config = {"penalty": 10, "answers": {}}
+    default_config = {"penalty": 60, "answers": {}}
     print("load_correct_answers_config: Starting to load config...")
 
     try:
@@ -245,14 +245,10 @@ def generate_leaderboard_table_html(leaderboard):
 
 def generate_admin_html(config):
     """Generates the HTML for the admin page to set correct answers and penalty."""
-    penalty = config.get("penalty", 10)
+    penalty = config.get("penalty", 60)
     current_correct_answers = config.get("answers", {})
 
-    html = """
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>ESP32 Admin - Set Correct Answers and Penalty</title>
+    admin_page_style = """
         <style>
             body { font-family: Arial, sans-serif; background-color: #f4f4f4; color: #333; margin: 0; padding: 20px; }
             .container { width: 80%; max-width: 800px; margin: 20px auto; background-color: white; padding: 30px; border-radius: 10px; box-shadow: 0 0 20px rgba(0, 0, 0, 0.1); }
@@ -276,30 +272,37 @@ def generate_admin_html(config):
             .reset-section { margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee; }
             .form-group { margin-bottom: 20px; }
             .form-group:last-child { margin-bottom: 0; }
-
         </style>
+    """
+
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>ESP32 Admin - Set Correct Answers and Penalty</title>
+        {admin_page_style}
         <script>
-            function checkPasswordAndReset() {
+            function checkPasswordAndReset() {{
                 var password = document.getElementById('resetPassword').value;
-                if (password === '""" + ADMIN_PASSWORD + """') {
-                    if (confirm('Are you sure you want to reset the leaderboard? This action cannot be undone.')) {
+                if (password === '{ADMIN_PASSWORD}') {{
+                    if (confirm('Are you sure you want to reset the leaderboard? This action cannot be undone.')) {{
                         var xhr = new XMLHttpRequest();
                         xhr.open('POST', '/admin_reset', true);
                         xhr.setRequestHeader('Content-type', 'application/x-www-form-urlencoded');
-                        xhr.onload = function () {
-                            if (xhr.status == 200) {
+                        xhr.onload = function () {{
+                            if (xhr.status == 200) {{
                                 alert('Leaderboard reset successfully!');
                                 window.location.href = '/admin'; // Refresh admin page to show empty leaderboard
-                            } else {
+                            }} else {{
                                 alert('Error resetting leaderboard.');
-                            }
-                        };
+                            }}
+                        }};
                         xhr.send('password=' + password);
-                    }
-                } else {
+                    }}
+                }} else {{
                     alert('Incorrect password. Reset aborted.');
-                }
-            }
+                }}
+            }}
         </script>
     </head>
     <body>
@@ -445,7 +448,7 @@ while True:
         password_attempt = post_data.get("password")
         if password_attempt == ADMIN_PASSWORD:
             clear_leaderboard()
-            conn.sendall(b"HTTP/1.1 200 OK\nContent-Type: text/html\n\n<html><body><h1>Leaderboard Reset!</h1><div style='text-align: center; margin-top: 20px;'> <a href='/admin' class='button-link' style='background-color: #008CBA; text-decoration: none;'>Back to Admin Page</a>  <a href='/' class='button-link' style='background-color: #4CAF50; text-decoration: none;'>Back to Leaderboard</a> </div></body></html>") # Made them buttons, added text-decoration: none;
+            conn.sendall(b"HTTP/1.1 200 OK\nContent-Type: text/html\n\n<html><head><style>.button-link { display: inline-block; padding: 12px 25px; background-color: #428bca; color: white; text-decoration: none; border-radius: 5px; font-size: 1em; transition: background-color 0.3s ease; }.button-link:hover { background-color: #3071a9; }</style></head><body><h1>Leaderboard Reset!</h1><div style='text-align: center; margin-top: 20px;'> <a href='/admin' class='button-link'>Back to Admin Page</a>  <a href='/' class='button-link'>Back to Leaderboard</a> </div></body></html>") # Made them buttons, added text-decoration: none;
         else:
             conn.sendall(b"HTTP/1.1 403 Forbidden\nContent-Type: text/plain\n\nIncorrect Admin Password")
 
@@ -485,7 +488,7 @@ while True:
             try:
                 updated_penalty = int(penalty_str)
             except ValueError:
-                updated_penalty = 10
+                updated_penalty = 60
 
             # --- Update the config dictionary ---
             correct_answers_config
@@ -497,12 +500,15 @@ while True:
             correct_answers = updated_correct_answers
             PENALTY_PER_INCORRECT = updated_penalty
 
-            # --- Save to file ---
-            save_correct_answers_config(correct_answers_config)
+            response_html = """<!DOCTYPE html>
+<html><head><title>Settings Saved!</title><style>.button-link { display: inline-block; padding: 12px 25px; background-color: #428bca; color: white; text-decoration: none; border-radius: 5px; font-size: 1em; transition: background-color 0.3s ease; }.button-link:hover { background-color: #3071a9; }</style></head><body><h1>Settings Saved!</h1><div style='text-align: center; margin-top: 20px;'> <button onclick="window.location.href='/admin'" class='button-link'>Back to Admin Page</button>  <button onclick="window.location.href='/'" class='button-link'>Back to Leaderboard</button> </div></body></html>"""
 
-            conn.sendall(
-                b"HTTP/1.1 200 OK\nContent-Type: text/html\n\n<html><body><h1>Settings Saved!</h1><div style='text-align: center; margin-top: 20px;'> <a href='/admin' class='button-link' style='background-color: #008CBA; text-decoration: none;'>Back to Admin Page</a>  <a href='/' class='button-link' style='background-color: #4CAF50; text-decoration: none;'>Back to Leaderboard</a> </div></body></html>" # Made them buttons, added text-decoration: none;
-            )
+            print("--- HTML Response being sent: ---") # DEBUG PRINT
+            print(response_html) # DEBUG PRINT
+            print("--- End of HTML Response ---") # DEBUG PRINT
+
+            conn.sendall(f"HTTP/1.1 200 OK\nContent-Type: text/html\n\n{response_html}".encode())
+
 
         except Exception as e:
             print("Error saving settings:", e)
