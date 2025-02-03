@@ -1,3 +1,4 @@
+# server.py
 import network
 import usocket as socket
 import time
@@ -18,6 +19,22 @@ leaderboard_file = "leaderboard.json"
 correct_answers_file = "correct_answers.json"
 ADMIN_PASSWORD = "SPSIT"  # Set admin password
 
+# --- Category Configuration ---
+CATEGORY1_UID_STR = "0xF30xC70x1A0x130x3D"  # Category 1 UID (and Start UID on client)
+CATEGORY2_UID_STR = "0x8A0x8D0x570x540x04"  # Category 2 UID (and Start UID on client)
+CATEGORY3_UID_STR = "0x120x9C0x190xFA0x6D"  # Category 3 UID (and Start UID on client)
+
+CATEGORY_UIDS = {
+    CATEGORY1_UID_STR: "Category1",
+    CATEGORY2_UID_STR: "Category2",
+    CATEGORY3_UID_STR: "Category3",
+}
+CATEGORY_NAMES = ["All Categories", "Category1", "Category2", "Category3"] # For display in dropdown
+
+def get_category_name_from_uid_str(uid_str):
+    """Returns category name based on UID string or "All Categories" if not found."""
+    return CATEGORY_UIDS.get(uid_str, "All Categories")
+
 def load_leaderboard():
     """Loads leaderboard data from a JSON file."""
     try:
@@ -36,7 +53,7 @@ def save_leaderboard(leaderboard):
             json.dump(leaderboard, f)
         print("Leaderboard saved to file.")
     except Exception as e:
-        print(f"Error saving leaderboard to file: {e}")
+        print("Error saving leaderboard to file: {}".format(e)) # use .format instead of f-string
 
 def load_correct_answers_config():
     """Loads correct answers and penalty config from a JSON file."""
@@ -44,7 +61,7 @@ def load_correct_answers_config():
     print("load_correct_answers_config: Starting to load config...")
 
     try:
-        print(f"load_correct_answers_config: Attempting to open file: '{correct_answers_file}'")
+        print("load_correct_answers_config: Attempting to open file: '{}'".format(correct_answers_file)) # use .format instead of f-string
         with open(correct_answers_file, "r") as f:
             print("load_correct_answers_config: File opened successfully.")
             try:
@@ -57,20 +74,20 @@ def load_correct_answers_config():
                     print("load_correct_answers_config: Warning: Config file content is invalid structure. Using default.")
                     return default_config
             except ValueError as json_err:
-                print(f"load_correct_answers_config: ERROR: JSON Decode Error: {json_err}. Using default config.")
+                print("load_correct_answers_config: ERROR: JSON Decode Error: {}. Using default config.".format(json_err)) # use .format instead of f-string
                 return default_config
     except OSError as os_err:
         if os_err.args[0] == 2:
-            print(f"load_correct_answers_config: FileNotFoundError: {os_err}. Using default config.")
+            print("load_correct_answers_config: FileNotFoundError: {}. Using default config.".format(os_err)) # use .format instead of f-string
         else:
-            print(f"load_correct_answers_config: OSError opening file: {os_err}. Using default config.")
+            print("load_correct_answers_config: OSError opening file: {}. Using default config.".format(os_err)) # use .format instead of f-string
         return default_config
     except Exception as general_err:
-        print(f"load_correct_answers_config: ERROR: Unexpected Exception: {general_err}. Using default config.")
+        print("load_correct_answers_config: ERROR: Unexpected Exception: {}. Using default config.".format(general_err)) # use .format instead of f-string
         return default_config
-    else:
-        print("load_correct_answers_config: WARNING: Reached ELSE clause of outer try-except, should not happen. Returning default config as fallback.")
-        return default_config
+    #else: # Removed else clause after try-except for better micropython compatibility
+    #    print("load_correct_answers_config: WARNING: Reached ELSE clause of outer try-except, should not happen. Returning default config as fallback.")
+    #    return default_config
 
     print("load_correct_answers_config: WARNING: Reached end of function unexpectedly, should not happen. Returning default config as fallback.")
     return default_config
@@ -82,13 +99,13 @@ def save_correct_answers_config(config):
             json.dump(config, f)
         print("Correct answers and penalty config saved to file.")
     except Exception as e:
-        print(f"Error saving correct answers and penalty config to file: {e}")
+        print("Error saving correct answers and penalty config to file: {}".format(e)) # use .format instead of f-string
 
 correct_answers_config = load_correct_answers_config()
 correct_answers = correct_answers_config["answers"]
 PENALTY_PER_INCORRECT = correct_answers_config["penalty"]
 
-def add_to_leaderboard(name, time_taken, answers):
+def add_to_leaderboard(name, time_taken, answers, category="All Categories"): # Added category parameter
     """Adds a new entry to the leaderboard, calculates penalty, and sorts it."""
     leaderboard = load_leaderboard()
     correct_answers_config = load_correct_answers_config()
@@ -108,7 +125,7 @@ def add_to_leaderboard(name, time_taken, answers):
         if submitted_answer is None:
             penalty_seconds += PENALTY_PER_INCORRECT
             unanswered_questions_count += 1
-            print(f"Question {question_num} unanswered - Penalty applied.")
+            print("Question {} unanswered - Penalty applied.".format(question_num)) # use .format instead of f-string
         else:
             correct_answer = correct_answers.get(question_num_str)
             if correct_answer and submitted_answer != correct_answer:
@@ -116,13 +133,13 @@ def add_to_leaderboard(name, time_taken, answers):
                 incorrect_answers_count += 1
 
     penalized_time = time_taken + penalty_seconds
-    print(f"Incorrect answers: {incorrect_answers_count}, Unanswered questions: {unanswered_questions_count}, Penalty: {penalty_seconds} seconds")
-    print(f"Penalized Time: {penalized_time} seconds")
+    print("Incorrect answers: {}, Unanswered questions: {}, Penalty: {} seconds".format(incorrect_answers_count, unanswered_questions_count, penalty_seconds)) # use .format instead of f-string
+    print("Penalized Time: {} seconds".format(penalized_time)) # use .format instead of f-string
 
-    leaderboard.append({"name": name, "time": penalized_time, "penalty": penalty_seconds})
+    leaderboard.append({"name": name, "time": penalized_time, "penalty": penalty_seconds, "category": category}) # Added category to entry
     leaderboard.sort(key=lambda x: x["time"])
     save_leaderboard(leaderboard)
-    print(f"Added to leaderboard: Name={name}, Time={penalized_time} (Penalized)")
+    print("Added to leaderboard: Name={}, Time={} (Penalized), Category={}".format(name, penalized_time, category)) # use .format instead of f-string
 
 def clear_leaderboard():
     """Clears all entries from the leaderboard."""
@@ -138,109 +155,140 @@ def format_time(seconds):
 
 def generate_leaderboard_csv(leaderboard):
     """Generates CSV data from the leaderboard data."""
-    csv_data = "Rank,Name,Time,Penalty,Final Time\n"
+    csv_data = "Rank,Name,Category,Time,Penalty,Final Time\n" # Added Category to CSV header
     for i, entry in enumerate(leaderboard):
         penalty_sec = entry.get("penalty", 0)
         final_time_sec = entry["time"]
         original_time_sec = final_time_sec - penalty_sec if penalty_sec > 0 else final_time_sec
-        csv_data += f"{i + 1},{entry['name']},{format_time(original_time_sec)},{format_time(penalty_sec)},{format_time(final_time_sec)}\n"
+        csv_data += "{},{},{},{},{},{}\n".format(i + 1, entry['name'], entry.get('category', 'N/A'), format_time(original_time_sec), format_time(penalty_sec), format_time(final_time_sec)) # use .format instead of f-string, Added Category to CSV row
     return csv_data
 
 # --- HTML for Webpages ---
-def generate_leaderboard_html(leaderboard):
+def generate_leaderboard_html(leaderboard, selected_category="All Categories"):
     """Generates the HTML content for the leaderboard webpage."""
-    html = """
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>ESP32 Leaderboard</title>
-        <style>
-            body { font-family: Arial, sans-serif; background-color: #f4f4f4; color: #333; margin: 0; padding: 20px; }
-            .container { width: 80%; max-width: 800px; margin: 20px auto; background-color: white; padding: 30px; border-radius: 10px; box-shadow: 0 0 20px rgba(0, 0, 0, 0.1); }
-            h1 { text-align: center; color: #4472C4; }
-            .header-buttons {
-                position: fixed;
-                top: 10px;
-                left: 10px;
-                right: 10px;
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-            }
-            .button-link { display: inline-block; padding: 12px 25px; background-color: #428bca; color: white; text-decoration: none; border-radius: 5px; font-size: 1em; transition: background-color 0.3s ease; }
-            .button-link:hover { background-color: #3071a9; }
 
-            table { border-collapse: collapse; width: 100%; /* Make table width 100% of container */ margin: 20px auto; } /* Keep auto margin for centering if needed */
-            th, td { border: 1px solid black; padding: 8px; text-align: left; }
-            /* Ensure table is centered in container */
-            #leaderboard { display: flex; justify-content: center; } /* Center the table within leaderboard div */
-            #leaderboard table { width: auto; max-width: 100%; } /* Adjust table width if needed within centered context */
-
-
-        </style>
-        <script>
-            function refreshLeaderboard() {
-                var xhttp = new XMLHttpRequest();
-                xhttp.onreadystatechange = function() {
-                    if (this.readyState == 4 && this.status == 200) {
-                        document.getElementById("leaderboard").innerHTML = this.responseText;
-                    }
-                };
-                xhttp.open("GET", "/leaderboard_table", true);
-                xhttp.send();
-            }
-        </script>
-    </head>
-    <body>
-        <div class="header-buttons">
-            <a href="/admin" class="button-link" style="background-color: green;">Admin Page</a>
+    category_buttons_html = """
+        <div style="text-align: center; margin-bottom: 20px;">
+            <form action="/" method="GET" style="display: inline;">
+                <input type="hidden" name="category" value="All Categories">
+                <button type="submit" class="button-link" style="background-color: #555;">All Categories</button>
+            </form>
+            <form action="/" method="GET" style="display: inline;">
+                <input type="hidden" name="category" value="Category1">
+                <button type="submit" class="button-link">Category 1</button>
+            </form>
+            <form action="/" method="GET" style="display: inline;">
+                <input type="hidden" name="category" value="Category2">
+                <button type="submit" class="button-link">Category 2</button>
+            </form>
+            <form action="/" method="GET" style="display: inline;">
+                <input type="hidden" name="category" value="Category3">
+                <button type="submit" class="button-link">Category 3</button>
+            </form>
         </div>
-        <div class="container">
-            <h1>ESP32 Leaderboard</h1>
-            <div id="leaderboard">
-                """
-    html += generate_leaderboard_table_html(leaderboard)
-    html += """
-            </div>
-        </div>
-    </body>
-    </html>
     """
+
+    html_style = """
+<style>
+body { font-family: Arial, sans-serif; background-color: #f4f4f4; color: #333; margin: 0; padding: 20px; }
+.container { width: 80%; max-width: 800px; margin: 20px auto; background-color: white; padding: 30px; border-radius: 10px; box-shadow: 0 0 20px rgba(0, 0, 0, 0.1); }
+h1 { text-align: center; color: #4472C4; }
+.header-buttons {
+    position: fixed;
+    top: 10px;
+    left: 10px;
+    right: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.button-link { display: inline-block; padding: 12px 25px; background-color: #428bca; color: white; text-decoration: none; border-radius: 5px; font-size: 1em; transition: background-color 0.3s ease; }
+.button-link:hover { background-color: #3071a9; }
+
+table { border-collapse: collapse; width: 100%; margin: 20px auto; }
+th, td { border: 1px solid black; padding: 8px; text-align: left; }
+#leaderboard { display: flex; justify-content: center; }
+#leaderboard table { width: auto; max-width: 100%; }
+</style>
+"""
+
+    html_script_template = """
+    <script>
+        function refreshLeaderboard() {
+            var xhttp = new XMLHttpRequest();
+            xhttp.onreadystatechange = function() {
+                if (this.readyState == 4 && this.status == 200) {
+                    document.getElementById("leaderboard").innerHTML = this.responseText;
+                }
+            };
+            xhttp.open("GET", "/leaderboard_table?category=%s", true);
+            xhttp.send();
+        }
+    </script>
+    """
+    html_script = html_script_template % selected_category
+
+    html_content = """
+<!DOCTYPE html>
+<html>
+<head>
+<title>ESP32 Leaderboard</title>
+{}
+{}
+</head>
+<body onload="refreshLeaderboard(); setInterval(refreshLeaderboard, 15000);">
+    <div class="header-buttons">
+        <a href="/admin" class="button-link" style="background-color: green;">Admin Page</a>
+    </div>
+    <div class="container">
+        <h1>ESP32 Leaderboard - {}</h1>
+        {}
+        <div id="leaderboard">
+            <!-- Leaderboard table will be loaded here -->
+        </div>
+    </div>
+</body>
+</html>
+"""
+    html = html_content.format(html_style, html_script, selected_category, category_buttons_html)
     return html
 
 def generate_leaderboard_table_html(leaderboard):
     """Generates the HTML for the leaderboard table."""
     table_html = """
-    <table>
-        <thead>
-            <tr>
-                <th>Rank</th>
-                <th>Name</th>
-                <th>Time</th>
-                <th>Penalty</th>
-                <th>Final Time</th>
-            </tr>
-        </thead>
-        <tbody>
-            """
+<table>
+<thead>
+<tr>
+<th>Rank</th>
+<th>Name</th>
+<th>Category</th>
+<th>Time</th>
+<th>Penalty</th>
+<th>Final Time</th>
+</tr>
+</thead>
+<tbody>
+"""
     for i, entry in enumerate(leaderboard):
         penalty_sec = entry.get("penalty", 0)
         final_time_sec = entry["time"]
         original_time_sec = final_time_sec - penalty_sec if penalty_sec > 0 else final_time_sec
+        category = entry.get("category", "N/A") # Get category, default to "N/A" if missing
 
-        table_html += f"""
-            <tr>
-                <td>{i + 1}</td>
-                <td>{entry['name']}</td>
-                <td>{format_time(original_time_sec)}</td>
-                <td>{format_time(penalty_sec)}</td>
-                <td>{format_time(final_time_sec)}</td>
-            </tr>
-            """
+        table_html += """
+        <tr>
+            <td>{}</td>
+            <td>{}</td>
+            <td>{}</td>
+            <td>{}</td>
+            <td>{}</td>
+            <td>{}</td>
+        </tr>
+        """.format(i + 1, entry['name'], category, format_time(original_time_sec), format_time(penalty_sec), format_time(final_time_sec)) # use .format instead of f-string
     table_html += """
-        </tbody>
-    </table>
-    """
+    </tbody>
+</table>
+"""
     return table_html
 
 def generate_admin_html(config):
@@ -275,44 +323,44 @@ def generate_admin_html(config):
         </style>
     """
 
-    html = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>ESP32 Admin - Set Correct Answers and Penalty</title>
-        {admin_page_style}
-        <script>
-            function checkPasswordAndReset() {{
-                var password = document.getElementById('resetPassword').value;
-                if (password === '{ADMIN_PASSWORD}') {{
-                    if (confirm('Are you sure you want to reset the leaderboard? This action cannot be undone.')) {{
-                        var xhr = new XMLHttpRequest();
-                        xhr.open('POST', '/admin_reset', true);
-                        xhr.setRequestHeader('Content-type', 'application/x-www-form-urlencoded');
-                        xhr.onload = function () {{
-                            if (xhr.status == 200) {{
-                                alert('Leaderboard reset successfully!');
-                                window.location.href = '/admin'; // Refresh admin page to show empty leaderboard
-                            }} else {{
-                                alert('Error resetting leaderboard.');
-                            }}
-                        }};
-                        xhr.send('password=' + password);
-                    }}
-                }} else {{
-                    alert('Incorrect password. Reset aborted.');
+    html = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>ESP32 Admin - Set Correct Answers and Penalty</title>
+    {}
+    <script>
+        function checkPasswordAndReset() {{
+            var password = document.getElementById('resetPassword').value;
+            if (password === '{}') {{
+                if (confirm('Are you sure you want to reset the leaderboard? This action cannot be undone.')) {{
+                    var xhr = new XMLHttpRequest();
+                    xhr.open('POST', '/admin_reset', true);
+                    xhr.setRequestHeader('Content-type', 'application/x-www-form-urlencoded');
+                    xhr.onload = function () {{
+                        if (xhr.status == 200) {{
+                            alert('Leaderboard reset successfully!');
+                            window.location.href = '/admin'; // Refresh admin page to show empty leaderboard
+                        }} else {{
+                            alert('Error resetting leaderboard.');
+                        }}
+                    }};
+                    xhr.send('password=' + password);
                 }}
+            }} else {{
+                alert('Incorrect password. Reset aborted.');
             }}
-        </script>
-    </head>
-    <body>
-        <div class="container">
-            <h1>Admin - Correct Answers and Penalty</h1>
-            <form action="/save_answers" method="post">
-                <div class="form-group">
-                    <label for="penalty">Penalty per Incorrect Answer (seconds):</label>
-                    <input type="number" id="penalty" name="penalty" value="{str(penalty)}" required>
-                </div>"""
+        }}
+    </script>
+</head>
+<body>
+    <div class="container">
+        <h1>Admin - Correct Answers and Penalty</h1>
+        <form action="/save_answers" method="post">
+            <div class="form-group">
+                <label for="penalty">Penalty per Incorrect Answer (seconds):</label>
+                <input type="number" id="penalty" name="penalty" value="{}" required>
+            </div>""".format(admin_page_style, ADMIN_PASSWORD, str(penalty)) # use .format instead of f-string
     for i in range(1, 16):
         question_num = str(i)
         current_answer = current_correct_answers.get(question_num, "")
@@ -324,46 +372,46 @@ def generate_admin_html(config):
         option_empty_selected = 'selected' if current_answer == '' else ''
 
 
-        html += f"""
-                <div class="form-group">
-                    <label for="answer{i}">Question {i}:</label>
-                    <select id="answer{i}" name="answer{i}">
-                        <option value="A" {option_a_selected}>A</option>
-                        <option value="B" {option_b_selected}>B</option>
-                        <option value="C" {option_c_selected}>C</option>
-                        <option value="D" {option_d_selected}>D</option>
-                        <option value=""  {option_empty_selected}>Not Set</option>
-                    </select>
-                </div>"""
+        html += """
+            <div class="form-group">
+                <label for="answer{}">Question {}:</label>
+                <select id="answer{}" name="answer{}">
+                    <option value="A" {}>A</option>
+                    <option value="B" {}>B</option>
+                    <option value="C" {}>C</option>
+                    <option value="D" {}>D</option>
+                    <option value=""  {}>Not Set</option>
+                </select>
+            </div>""".format(i, i, i, i, option_a_selected, option_b_selected, option_c_selected, option_d_selected, option_empty_selected) # use .format instead of f-string
     html += """
-                <div class="button-container">
-                    <button type="submit" class="button-link2" >Save Settings</button>
-                </div>
-            </form>
-
-            <div class="export-button-container">
-                <a href="/leaderboard_excel" class="export-button">Export to Excel</a>
+            <div class="button-container">
+                <button type="submit" class="button-link2" >Save Settings</button>
             </div>
+        </form>
 
-            <div class="reset-section">
-                <h2>Reset Leaderboard</h2>
-                <div class="form-group">
-                    <label for="resetPassword">Admin Password:</label>
-                    <input type="password" id="resetPassword" name="resetPassword">
-                </div>
-                <div class="reset-button-container">
-                    <button onclick="checkPasswordAndReset()" class="reset-button">Reset Leaderboard</button>
-                </div>
+        <div class="export-button-container">
+            <a href="/leaderboard_excel" class="export-button">Export to Excel</a>
+        </div>
+
+        <div class="reset-section">
+            <h2>Reset Leaderboard</h2>
+            <div class="form-group">
+                <label for="resetPassword">Admin Password:</label>
+                <input type="password" id="resetPassword" name="resetPassword">
             </div>
-
-            <div class="button-container2">
-                <a href="/" class="button-link">Back to Leaderboard</a>
+            <div class="reset-button-container">
+                <button onclick="checkPasswordAndReset()" class="reset-button">Reset Leaderboard</button>
             </div>
         </div>
 
-    </body>
-    </html>
-    """
+        <div class="button-container2">
+            <a href="/" class="button-link">Back to Leaderboard</a>
+        </div>
+    </div>
+
+</body>
+</html>
+"""
     return html
 
 # --- Socket Server ---
@@ -379,24 +427,71 @@ while True:
     # --- Handle HTTP Requests ---
     request_lines = request.split("\r\n")
     request_line = request_lines[0]
-    method, path, _ = request_line.split(" ")
+    method, path_raw, _ = request_line.split(" ")
 
-    if method == "GET" and path == "/":
+    # Extract base path (part before '?')
+    if "?" in path_raw:
+        path_base = path_raw.split("?")[0]
+    else:
+        path_base = path_raw
+
+    print(f"Full Request:\n{request}") # Debug: Print full request
+    print(f"Request Method: {method}, Path (raw): {path_raw}, Path (base): {path_base}") # Debug: Print method and both paths
+
+
+    def get_query_param(request_str, param_name):
+        """Helper function to extract query parameters from a request string."""
+        try:
+            path_and_query = request_str.split(" ")[1]
+            if "?" in path_and_query:
+                query_str = path_and_query.split("?")[1]
+                params = query_str.split("&")
+                for param in params:
+                    key_value = param.split("=")
+                    if key_value[0] == param_name:
+                        return key_value[1]
+            return None
+        except:
+            return None
+
+    def filter_leaderboard_by_category(leaderboard, category):
+        """Filters leaderboard entries by category."""
+        print(f"Filtering leaderboard for category: {category}") # Debug print
+        if category == "All Categories":
+            print("   Returning ALL categories") # Debug print
+            return leaderboard
+        else:
+            filtered_list = [entry for entry in leaderboard if entry.get("category") == category]
+            print(f"   Returning {len(filtered_list)} entries for category: {category}") # Debug print
+            return filtered_list
+
+
+    if method == "GET" and path_base == "/": # Use path_base here
+        selected_category = get_query_param(request, "category")
+        if not selected_category:
+            selected_category = "All Categories"  # Default category
+        print(f"Request for leaderboard page, selected_category: {selected_category}") # Debug print
         leaderboard = load_leaderboard()
-        html = generate_leaderboard_html(leaderboard)
-        conn.sendall(f"HTTP/1.1 200 OK\nContent-Type: text/html\n\n{html}".encode())
-    elif method == "GET" and path == "/leaderboard_table":
+        filtered_leaderboard = filter_leaderboard_by_category(leaderboard, selected_category)
+        html = generate_leaderboard_html(filtered_leaderboard, selected_category)
+        conn.sendall(("HTTP/1.1 200 OK\nContent-Type: text/html\n\n{}".format(html)).encode()) # use .format instead of f-string
+    elif method == "GET" and path_base == "/leaderboard_table": # Use path_base here
+        selected_category = get_query_param(request, "category")
+        if not selected_category:
+            selected_category = "All Categories" # Default if not provided
+        print(f"Request for leaderboard table, selected_category: {selected_category}") # Debug print
         leaderboard = load_leaderboard()
-        table_html = generate_leaderboard_table_html(leaderboard)
-        conn.sendall(f"HTTP/1.1 200 OK\nContent-Type: text/html\n\n{table_html}".encode())
-    elif method == "GET" and path == "/admin":
+        filtered_leaderboard = filter_leaderboard_by_category(leaderboard, selected_category)
+        table_html = generate_leaderboard_table_html(filtered_leaderboard)
+        conn.sendall(("HTTP/1.1 200 OK\nContent-Type: text/html\n\n{}".format(table_html)).encode()) # use .format instead of f-string
+    elif method == "GET" and path_base == "/admin": # Use path_base here
         admin_html = generate_admin_html(correct_answers_config)
-        conn.sendall(f"HTTP/1.1 200 OK\nContent-Type: text/html\n\n{admin_html}".encode())
-    elif method == "GET" and path == "/leaderboard_excel":
+        conn.sendall(("HTTP/1.1 200 OK\nContent-Type: text/html\n\n{}".format(admin_html)).encode()) # use .format instead of f-string
+    elif method == "GET" and path_base == "/leaderboard_excel": # Use path_base here
         leaderboard = load_leaderboard()
         csv_data = generate_leaderboard_csv(leaderboard)
-        conn.sendall(f"HTTP/1.1 200 OK\nContent-Type: text/csv\nContent-Disposition: attachment; filename=\"leaderboard.csv\"\n\n{csv_data}".encode())
-    elif method == "POST" and path == "/add":
+        conn.sendall(("HTTP/1.1 200 OK\nContent-Type: text/csv\nContent-Disposition: attachment; filename=\"leaderboard.csv\"\n\n{}".format(csv_data)).encode()) # use .format instead of f-string
+    elif method == "POST" and path_base == "/add": # Use path_base here
         # Handle adding a new entry to the leaderboard - Expecting JSON data
         try:
             body_data = None
@@ -416,21 +511,23 @@ while True:
             name = received_json.get("name")
             time_taken = received_json.get("time")
             answers_data = received_json.get("answers")
+            category_uid_str = received_json.get("category_uid", None) # Get category UID from client
+            category_name = get_category_name_from_uid_str(category_uid_str) if category_uid_str else "All Categories" # Determine category name
 
             if name is None or time_taken is None or answers_data is None:
                 raise ValueError("Invalid JSON data: 'name', 'time', or 'answers' missing")
 
-            add_to_leaderboard(name, time_taken, answers_data)
+            add_to_leaderboard(name, time_taken, answers_data, category_name) # Pass category name to add_to_leaderboard
             conn.sendall(b"HTTP/1.1 200 OK\nContent-Type: text/plain\n\nEntry added!")
 
         except Exception as e:
             print("Error processing data:", e)
             conn.sendall(b"HTTP/1.1 400 Bad Request\nContent-Type: text/plain\n\nInvalid data format")
-    elif method == "POST" and path == "/reset": # Legacy reset, will not be used now, but kept for compatibility if client sends to /reset
+    elif method == "POST" and path_base == "/reset": # Legacy reset, will not be used now, but kept for compatibility if client sends to /reset # Use path_base here
         # Handle leaderboard reset request
         clear_leaderboard()
         conn.sendall(b"HTTP/1.1 200 OK\nContent-Type: text/plain\n\nLeaderboard reset!")
-    elif method == "POST" and path == "/admin_reset":
+    elif method == "POST" and path_base == "/admin_reset": # Use path_base here
         # Handle leaderboard reset request from admin page with password
         post_data = {}
         body_data = None
@@ -452,7 +549,7 @@ while True:
         else:
             conn.sendall(b"HTTP/1.1 403 Forbidden\nContent-Type: text/plain\n\nIncorrect Admin Password")
 
-    elif method == "POST" and path == "/save_answers":
+    elif method == "POST" and path_base == "/save_answers": # Use path_base here
         # Handle saving correct answers and penalty
         try:
             post_data = {}
@@ -463,24 +560,24 @@ while True:
                     body_data = request_lines[i + 1]
                     break
             if body_data:
-                print(f"Received body_data: '{body_data}'")
+                print("Received body_data: '{}'".format(body_data)) # use .format instead of f-string
                 # Parse form data (simple key-value pairs)
                 for param in body_data.split("&"):
-                    print(f"Processing param: '{param}'")
+                    print("Processing param: '{}'".format(param)) # use .format instead of f-string
                     parts = param.split("=", 1)
                     if len(parts) == 2:
                         key, value = parts
                         post_data[key] = value
-                        print(f"Parsed key: '{key}', value: '{value}'")
+                        print("Parsed key: '{}', value: '{}'".format(key, value)) # use .format instead of f-string
                     else:
-                        print(f"Warning: Skipping malformed form parameter: {param}")
+                        print("Warning: Skipping malformed form parameter: {}".format(param)) # use .format instead of f-string
             else:
                 print("Warning: body_data is empty!")
 
             updated_correct_answers = {}
             for i in range(1, 16):
                 question_num = str(i)
-                answer = post_data.get(f"answer{i}", "")
+                answer = post_data.get("answer{}".format(i), "") # use .format instead of f-string
                 if answer:
                     updated_correct_answers[question_num] = answer
 
@@ -502,12 +599,11 @@ while True:
 
             response_html = """<!DOCTYPE html>
 <html><head><title>Settings Saved!</title><style>.button-link { display: inline-block; padding: 12px 25px; background-color: #428bca; color: white; text-decoration: none; border-radius: 5px; font-size: 1em; transition: background-color 0.3s ease; }.button-link:hover { background-color: #3071a9; }</style></head><body><h1>Settings Saved!</h1><div style='text-align: center; margin-top: 20px;'> <button onclick="window.location.href='/admin'" class='button-link'>Back to Admin Page</button>  <button onclick="window.location.href='/'" class='button-link'>Back to Leaderboard</button> </div></body></html>"""
-
             print("--- HTML Response being sent: ---") # DEBUG PRINT
             print(response_html) # DEBUG PRINT
             print("--- End of HTML Response ---") # DEBUG PRINT
 
-            conn.sendall(f"HTTP/1.1 200 OK\nContent-Type: text/html\n\n{response_html}".encode())
+            conn.sendall(("HTTP/1.1 200 OK\nContent-Type: text/html\n\n{}".format(response_html)).encode()) # use .format instead of f-string
 
 
         except Exception as e:
