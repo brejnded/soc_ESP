@@ -64,6 +64,13 @@ reader = mfrc522.MFRC522(sck=sck_rfid, mosi=mosi_rfid, miso=miso_rfid, rst=rst_r
 # START_UID = [0xF3, 0xC7, 0x1A, 0x13, 0x3D]  # Start tag UID - REMOVED
 STOP_TIMER_UID = [0x00, 0x64, 0x56, 0xD3, 0xE1]  # Stop Timer tag UID
 WIFI_SEND_DATA_UID = [0xD3, 0x34, 0xE7, 0x11, 0x11] # UID to trigger Wi-Fi connection and data send
+
+# --- ADD TIME UIDs ---  *** ADDED THESE ***
+ADD_1_MINUTE_UID = [0x11, 0x22, 0x33, 0x44, 0x51]  # Example UID for adding 1 minute - **CHANGE THIS TO YOUR ACTUAL UID**
+ADD_2_MINUTE_UID = [0x11, 0x22, 0x33, 0x44, 0x52]  # Example UID for adding 2 minutes - **CHANGE THIS TO YOUR ACTUAL UID**
+ADD_3_MINUTE_UID = [0x11, 0x22, 0x33, 0x44, 0x53]  # Example UID for adding 3 minutes - **CHANGE THIS TO YOUR ACTUAL UID**
+
+
 QUESTIONS = {  # Use a dictionary to map UIDs to question numbers
     "0x730xED0xBF0x2C0x0D": 1,
     "0x230xBA0xCB0x2C0x7E": 2,
@@ -168,6 +175,15 @@ def delete_answer_time_files():
             else:
                 print("Error deleting file {}: {}".format(file_path, e)) # use .format instead of f-string
 
+def blink_led(pin, num_blinks, blink_duration_seconds):
+    """Blinks the LED a specified number of times, each blink lasting blink_duration_seconds."""
+    blink_delay = blink_duration_seconds # Set blink_delay to the desired duration for each ON and OFF
+    for _ in range(num_blinks):
+        pin.value(1)  # LED ON
+        time.sleep(blink_delay)
+        pin.value(0)  # LED OFF
+        time.sleep(blink_delay)
+
 #--- Function to Send Data to Server ---
 def send_data(name, sta, category_uid_str): # Added category_uid_str parameter
     retries = 3
@@ -204,11 +220,19 @@ def send_data(name, sta, category_uid_str): # Added category_uid_str parameter
             print("Request sent.") # Debug request send
 
             response = s.recv(1024)
-            print("Server Response:", response.decode()) # Debug server response
+            response_str = response.decode()
+            print("Server Response:", response_str) # Debug server response
 
             s.close()
             print("Socket closed.") # Debug socket close
-            return True
+
+            if response_str.startswith("HTTP/1.1 200 OK"): # Check for successful response
+                print("Data sent successfully and confirmed by server.")
+                return True
+            else:
+                print("Server did not confirm successful data reception.")
+                return False
+
 
         except Exception as e:
             print("Error sending data (attempt {}/{}): {}".format(attempt+1, retries, e)) # use .format instead of f-string, Keep original error print
@@ -231,7 +255,7 @@ def send_data(name, sta, category_uid_str): # Added category_uid_str parameter
                 print("Wi-Fi already disconnected or not connected.")
 
 #--- Modified handle_start_card function (renamed to handle_category_card) ---
-def handle_category_card(uid_str, uid_bytes): # Pass uid_bytes
+def handle_category_card(uid_str, uid_bytes):
     """Handles the Category card logic (now also starts timer)."""
     global timer_running, timer_stopped, timer_start_time, current_question, answers, last_category_uid
 
@@ -310,9 +334,7 @@ def handle_wifi_send_card(uid_str, uid_bytes):
             # --- Send Data to Server ---
             if send_data("Client1", sta, category_uid_str): # Call send_data, no time argument needed, pass category UID string
                 print("Data sent to server successfully.")
-                led1_pin.value(1) # Indicate success with LED
-                time.sleep(2)
-                led1_pin.value(0)
+                blink_led(led1_pin, 3, 2) # <------- LED Blink Confirmation here, each blink 2 seconds ON and 2 seconds OFF
                 last_category_uid = None # Reset category after successful send
             else:
                 print("Failed to send data after multiple retries.")
@@ -358,11 +380,25 @@ def handle_question_card(uid_str, question_num):
 
         save_answer_to_sdcard(question_num, selected_answer)
         led2_pin.value(0)
-        led1_pin.value(1)
-        time.sleep(1)
-        led1_pin.value(0)
+        blink_led(led1_pin, 3, 2) # <------- LED Blink Confirmation for Answer here! each blink 2 seconds ON and 2 seconds OFF
+        time.sleep(1) # Keep the delay to separate from potential next card scan if needed.
+
     else:
         print("Question already answered or Timer not running")
+
+# --- NEW FUNCTION TO HANDLE ADD TIME CARDS ---
+def handle_add_time_card(uid_str, uid_bytes, minutes_to_add):
+    """Handles the Add Time card logic."""
+    global timer_running, timer_start_time
+
+    if timer_running:
+        time_to_add_ms = minutes_to_add * 60 * 1000  # Convert minutes to milliseconds
+        timer_start_time -= time_to_add_ms  # Subtract time to add from the start time
+        print(f"Added {minutes_to_add} minute(s) to the timer. New start time adjusted.") # use f-string for clarity
+        blink_led(led1_pin, minutes_to_add, 0.5) # Blink LED to indicate time added, short blinks
+    else:
+        print("Timer is not running. Cannot add time.")
+
 
 def main():
     """Main program loop."""
@@ -409,6 +445,13 @@ def main():
                         handle_stop_card(uid_str, uid)
                     elif uid == WIFI_SEND_DATA_UID:
                         handle_wifi_send_card(uid_str, uid)
+                    # --- ADD TIME UID HANDLERS ---  *** ADDED THESE ***
+                    elif uid == ADD_1_MINUTE_UID:
+                        handle_add_time_card(uid_str, uid, 1) # Add 1 minute
+                    elif uid == ADD_2_MINUTE_UID:
+                        handle_add_time_card(uid_str, uid, 2) # Add 2 minutes
+                    elif uid == ADD_3_MINUTE_UID:
+                        handle_add_time_card(uid_str, uid, 3) # Add 3 minutes
                     else: # Question cards and unauthorized access remain the same
                         question_num = QUESTIONS.get(uid_str)
                         if question_num:
