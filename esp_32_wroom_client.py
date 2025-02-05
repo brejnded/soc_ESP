@@ -112,11 +112,11 @@ def byte_array_to_str(byte_arr):
 def save_time_to_sdcard(elapsed_time):
     """Saves the elapsed time to the timer_log.txt file on the SD card."""
     try:
-        with open("/sd/timer_log.txt", "w") as f:
-            f.write("Time: {} seconds\n".format(elapsed_time)) # use .format instead of f-string
+        with open("/sd/timer_log.txt", "w") as f: # <---- Corrected path here
+            f.write("Time: {} seconds\n".format(elapsed_time))
         print("Time saved to SD card")
     except Exception as e:
-        print("Error saving to SD card: {}".format(e)) # use .format instead of f-string
+        print("Error saving to SD card: {}".format(e))
 
 def read_time_from_sdcard():
     """Reads the elapsed time from the timer_log.txt file on the SD card."""
@@ -125,7 +125,7 @@ def read_time_from_sdcard():
             time_str = f.readline().split(":")[1].strip().split(" ")[0]  # Extract time value
         return float(time_str)
     except Exception as e:
-        print("Error reading time from SD card: {}".format(e)) # use .format instead of f-string
+        print("Error reading time from SD card: {}".format(e))
         return None # Or raise the exception, depending on desired behavior
 
 def read_answers_from_sdcard():
@@ -140,7 +140,7 @@ def read_answers_from_sdcard():
                     answer = parts[1].strip()
                     answers[question_num] = answer
     except Exception as e:
-        print("Error reading answers from SD card: {}".format(e)) # use .format instead of f-string
+        print("Error reading answers from SD card: {}".format(e))
     return answers
 
 def save_answer_to_sdcard(question_num, answer):
@@ -149,10 +149,11 @@ def save_answer_to_sdcard(question_num, answer):
     try:
         answers[question_num] = answer
         with open("/sd/answers.txt", "a") as f:
-            f.write("{}: {}\n".format(question_num, answer)) # use .format instead of f-string
-        print("Question {} - Answer saved to SD card".format(question_num)) # use .format instead of f-string
+            f.write("{}: {}\n".format(question_num, answer))
+        print("Question {} - Answer saved to SD card".format(question_num))
+        blink_led(led1_pin, 3, 2, 0.5) # <------- LED Blink Confirmation for Answer here! each blink 2 seconds ON and 0.5 seconds OFF
     except Exception as e:
-        print("Error saving to SD card: {}".format(e)) # use .format instead of f-string
+        print("Error saving to SD card: {}".format(e))
 
 def create_empty_answers_file():
     """Creates an empty answers.txt file on the SD card."""
@@ -160,7 +161,7 @@ def create_empty_answers_file():
         with open("/sd/answers.txt", "w") as f:
             print("Empty answers file created on the SD card")
     except Exception as e:
-        print("Error creating answers file on SD card: {}".format(e)) # use .format instead of f-string
+        print("Error creating answers file on SD card: {}".format(e))
 
 def delete_answer_time_files():
     """Deletes answers.txt and timer_log.txt files from the SD card."""
@@ -168,21 +169,20 @@ def delete_answer_time_files():
     for file_path in files_to_delete:
         try:
             os.remove(file_path)
-            print("Deleted file: {}".format(file_path)) # use .format instead of f-string
+            print("Deleted file: {}".format(file_path))
         except OSError as e:
             if e.args[0] == 2:  # FileNotFoundError
-                print("File not found, skipping deletion: {}".format(file_path)) # use .format instead of f-string
+                print("File not found, skipping deletion: {}".format(file_path))
             else:
-                print("Error deleting file {}: {}".format(file_path, e)) # use .format instead of f-string
+                print("Error deleting file {}: {}".format(file_path, e))
 
-def blink_led(pin, num_blinks, blink_duration_seconds):
-    """Blinks the LED a specified number of times, each blink lasting blink_duration_seconds."""
-    blink_delay = blink_duration_seconds # Set blink_delay to the desired duration for each ON and OFF
+def blink_led(pin, num_blinks, on_duration_seconds, off_duration_seconds):
+    """Blinks the LED a specified number of times with custom ON and OFF durations."""
     for _ in range(num_blinks):
         pin.value(1)  # LED ON
-        time.sleep(blink_delay)
+        time.sleep(on_duration_seconds)
         pin.value(0)  # LED OFF
-        time.sleep(blink_delay)
+        time.sleep(off_duration_seconds)
 
 #--- Function to Send Data to Server ---
 def send_data(name, sta, category_uid_str): # Added category_uid_str parameter
@@ -207,7 +207,7 @@ def send_data(name, sta, category_uid_str): # Added category_uid_str parameter
 
     for attempt in range(retries):
         try:
-            print("Attempting to connect to server: {}:{} (Attempt {}/{})".format(server_ip, server_port, attempt+1, retries)) # use .format instead of f-string
+            print("Attempting to connect to server: {}:{} (Attempt {}/{})".format(server_ip, server_port, attempt+1, retries))
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.settimeout(5) # Set timeout for connection and receiving
             s.connect((server_ip, server_port))
@@ -228,16 +228,18 @@ def send_data(name, sta, category_uid_str): # Added category_uid_str parameter
 
             if response_str.startswith("HTTP/1.1 200 OK"): # Check for successful response
                 print("Data sent successfully and confirmed by server.")
-                return True
+                blink_led(led1_pin, 3, 2, 0.5) # <------- LED Blink Confirmation here, each blink 2 seconds ON and 0.5 seconds OFF
+                last_category_uid = None # Reset category after successful send
+                return True # Indicate success and exit retries
             else:
                 print("Server did not confirm successful data reception.")
-                return False
+                return False # Indicate failure and exit retries
 
 
         except Exception as e:
-            print("Error sending data (attempt {}/{}): {}".format(attempt+1, retries, e)) # use .format instead of f-string, Keep original error print
+            print("Error sending data (attempt {}/{}): {}".format(attempt+1, retries, e))
             if attempt < retries - 1:
-                print("Retrying in {} seconds...".format(retry_delay)) # use .format instead of f-string
+                print("Retrying in {} seconds...".format(retry_delay))
                 time.sleep(retry_delay)
                 retry_delay *= 2
             else:
@@ -253,6 +255,8 @@ def send_data(name, sta, category_uid_str): # Added category_uid_str parameter
                 print("Disconnected from Wi-Fi")
             else:
                 print("Wi-Fi already disconnected or not connected.")
+    return False # Return False if all retries fail
+
 
 #--- Modified handle_start_card function (renamed to handle_category_card) ---
 def handle_category_card(uid_str, uid_bytes):
@@ -262,14 +266,14 @@ def handle_category_card(uid_str, uid_bytes):
     if timer_running:
         timer_running = False
         timer_stopped = True
-    print("Category Card Scanned: UID = {}".format(uid_str)) # use .format instead of f-string, Indicate category card is scanned
+    print("Category Card Scanned: UID = {}".format(uid_str))
     timer_start_time = time.ticks_ms()
     timer_running = True
     timer_stopped = False
     current_question = 0
     answers = {}
     last_category_uid = uid_bytes # Store the category UID bytes
-    print("Project Reset - Timer Started for Category: {}".format(uid_str)) # use .format instead of f-string, Indicate category start
+    print("Project Reset - Timer Started for Category: {}".format(uid_str))
     delete_answer_time_files() # Delete answers.txt and timer_log.txt
     create_empty_answers_file() # Create a new empty answers.txt
     led1_pin.value(1)
@@ -287,11 +291,7 @@ def handle_stop_card(uid_str, uid_bytes):
         timer_running = False
         timer_stopped = True
         print("Timer Stopped, Elapsed Time:", elapsed_time)
-        for _ in range(2):
-            led1_pin.value(1)
-            time.sleep(0.5)
-            led1_pin.value(0)
-            time.sleep(0.5)
+        blink_led(led1_pin, 2, 0.5, 0.5) # <------- LED Blink Confirmation for Stop Card, 2 blinks of 0.5s ON and 0.5s OFF
         save_time_to_sdcard(elapsed_time)
 
         answers = read_answers_from_sdcard()
@@ -317,7 +317,7 @@ def handle_wifi_send_card(uid_str, uid_bytes):
         # --- Connect to Wi-Fi (Only when WIFI_SEND_DATA_UID card is scanned) ---
         sta = network.WLAN(network.STA_IF) # Create sta object here
         sta.active(True)
-        print("Attempting to connect to Wi-Fi SSID: '{}'".format(ssid)) # use .format instead of f-string, Debug SSID
+        print("Attempting to connect to Wi-Fi SSID: '{}'".format(ssid))
         sta.connect(ssid, password)
 
         wifi_connect_timeout = time.time() + 10 # 10 seconds timeout for Wi-Fi connection
@@ -328,13 +328,13 @@ def handle_wifi_send_card(uid_str, uid_bytes):
         if sta.isconnected():
             print("Connected to Wi-Fi. IP:", sta.ifconfig()[0])
             rssi = sta.status('rssi') # Get RSSI
-            print("Wi-Fi RSSI: {} dBm".format(rssi)) # use .format instead of f-string, Print RSSI
+            print("Wi-Fi RSSI: {} dBm".format(rssi))
 
             category_uid_str = byte_array_to_str(last_category_uid) # Convert category UID to string for sending
             # --- Send Data to Server ---
             if send_data("Client1", sta, category_uid_str): # Call send_data, no time argument needed, pass category UID string
                 print("Data sent to server successfully.")
-                blink_led(led1_pin, 3, 2) # <------- LED Blink Confirmation here, each blink 2 seconds ON and 2 seconds OFF
+                blink_led(led1_pin, 3, 2, 0.5) # <------- LED Blink Confirmation here, each blink 2 seconds ON and 0.5 seconds OFF
                 last_category_uid = None # Reset category after successful send
             else:
                 print("Failed to send data after multiple retries.")
@@ -356,7 +356,7 @@ def handle_question_card(uid_str, question_num):
     """Handles question card logic."""
     global selected_answer
     if timer_running and question_num not in answers:
-        print("Question {} active".format(question_num)) # use .format instead of f-string
+        print("Question {} active".format(question_num))
         led2_pin.value(1)
         selected_answer = None
 
@@ -380,7 +380,9 @@ def handle_question_card(uid_str, question_num):
 
         save_answer_to_sdcard(question_num, selected_answer)
         led2_pin.value(0)
-        blink_led(led1_pin, 3, 2) # <------- LED Blink Confirmation for Answer here! each blink 2 seconds ON and 2 seconds OFF
+        # blink_led(led1_pin, 3, 2) # <------- LED Blink Confirmation for Answer here! each blink 2 seconds ON and 2 seconds OFF # OLD INCORRECT LINE
+        # Moved blink_led to inside save_answer_to_sdcard function for better flow.
+
         time.sleep(1) # Keep the delay to separate from potential next card scan if needed.
 
     else:
@@ -394,8 +396,8 @@ def handle_add_time_card(uid_str, uid_bytes, minutes_to_add):
     if timer_running:
         time_to_add_ms = minutes_to_add * 60 * 1000  # Convert minutes to milliseconds
         timer_start_time -= time_to_add_ms  # Subtract time to add from the start time
-        print(f"Added {minutes_to_add} minute(s) to the timer. New start time adjusted.") # use f-string for clarity
-        blink_led(led1_pin, minutes_to_add, 0.5) # Blink LED to indicate time added, short blinks
+        print(f"Added {minutes_to_add} minute(s) to the timer. New start time adjusted.")
+        blink_led(led1_pin, minutes_to_add, 0.5, 0.5) # Blink LED to indicate time added, short blinks, 0.5s ON and 0.5s OFF
     else:
         print("Timer is not running. Cannot add time.")
 
@@ -409,7 +411,7 @@ def main():
         os.mount(vfs, "/sd") # Mount SD card filesystem
         print("SD card mounted successfully!") # Add print to confirm mount
     except OSError as e:
-        print("SD Card Mount Error: {}".format(e)) # Print specific SD card mount error
+        print("SD Card Mount Error: {}".format(e))
         print("Please check:")
         print("- SD card is properly inserted.")
         print("- Wiring to SD card module (SPI pins and CS).")
@@ -432,7 +434,7 @@ def main():
                 if stat == reader.OK:
                     uid = list(raw_uid)
                     uid_str = byte_array_to_str(uid)
-                    print("Card Detected: UID = {}".format(uid_str)) # use .format instead of f-string
+                    print("Card Detected: UID = {}".format(uid_str))
 
                     # --- Category UIDs now also start the timer ---
                     if uid == CATEGORY1_UID:
@@ -445,6 +447,7 @@ def main():
                         handle_stop_card(uid_str, uid)
                     elif uid == WIFI_SEND_DATA_UID:
                         handle_wifi_send_card(uid_str, uid)
+                        time.sleep(2) # <------- ADDED DELAY HERE
                     # --- ADD TIME UID HANDLERS ---  *** ADDED THESE ***
                     elif uid == ADD_1_MINUTE_UID:
                         handle_add_time_card(uid_str, uid, 1) # Add 1 minute
