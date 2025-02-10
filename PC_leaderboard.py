@@ -1,4 +1,3 @@
-# computer_server.py (Python - Computer Side Server)
 import serial
 import serial.tools.list_ports
 import json
@@ -7,6 +6,9 @@ import threading
 import time
 import os
 import urllib.parse
+import socket
+import tkinter as tk
+from tkinter import ttk, messagebox
 
 # --- Configuration ---
 SERIAL_PORT = None  # Automatically detected if None
@@ -29,7 +31,7 @@ CATEGORY_UIDS = {
 }
 CATEGORY_NAMES_ADMIN = ["Category 1", "Category 2", "Category 3"]
 CATEGORY_NAMES_LEADERBOARD = ["All Categories", "Category 1", "Category 2", "Category 3"]
-CATEGORY_NAMES_CONFIG_KEYS = ["Category1", "Category2", "Category3"] # Keys to access categories in config
+CATEGORY_NAMES_CONFIG_KEYS = ["Category1", "Category2", "Category3"]  # Keys to access categories in config
 
 # --- Global Variables ---
 leaderboard_data = []
@@ -40,31 +42,47 @@ correct_answers_config = {"penalty": 60, "categories": {
     "All Categories": {}
 }}
 PENALTY_PER_INCORRECT = correct_answers_config["penalty"]
-NUM_QUESTIONS_PER_CATEGORY = 15 # Define the number of questions, assuming it's consistent
+NUM_QUESTIONS_PER_CATEGORY = 15  # Define the number of questions, assuming it's consistent
 
 # --- Helper Functions ---
-def find_serial_port():
+
+def find_serial_port(root):
     ports = list(serial.tools.list_ports.comports())
-    if ports:
-        print("Available serial ports:")
-        for i, (port, desc, hwid) in enumerate(ports):
-            print(f"{i+1}: {port} {desc} {hwid}")
-        if len(ports) == 1:
-            print(f"Auto-selecting the only available port: {ports[0].device}")
-            return ports[0].device
-        else:
-            while True:
-                try:
-                    port_index = int(input("Enter the number of the serial port for ESP32: ")) - 1
-                    if 0 <= port_index < len(ports):
-                        return ports[port_index].device
-                    else:
-                        print("Invalid port number. Please choose from the list.")
-                except ValueError:
-                    print("Invalid input. Please enter a number.")
-    else:
-        print("No serial ports found. Please ensure your ESP32 is connected.")
+    if not ports:
+        messagebox.showerror("Error", "No serial ports found. Please ensure your ESP32 is connected.", parent=root)
         return None
+
+    print("Available serial ports:")
+    for i, (port, desc, hwid) in enumerate(ports):
+        print(f"{i + 1}: {port} {desc} {hwid}")
+
+    if len(ports) == 1:
+        print(f"Auto-selecting the only available port: {ports[0].device}")
+        return ports[0].device
+
+    # --- Tkinter popup for port selection ---
+    port_var = tk.StringVar()
+    port_var.set(ports[0].device if ports else "")  # Set default, handle empty list
+
+    def select_port():
+        selected_port = port_var.get()
+        root.destroy()  # Destroy this window when done.
+        nonlocal selected_port_result
+        selected_port_result = selected_port
+
+    selected_port_result = None
+
+
+    # Create radio buttons for each port
+    for i, (port, desc, hwid) in enumerate(ports):
+        ttk.Radiobutton(root, text=f"{port} ({desc})", variable=port_var, value=port).pack(anchor=tk.W)
+
+    ttk.Button(root, text="Select", command=select_port).pack(pady=10)
+    root.protocol("WM_DELETE_WINDOW", select_port) # Ensure select port runs if window closed
+    root.mainloop()  # Start *this* window's mainloop
+
+    return selected_port_result
+
 
 def load_leaderboard():
     global leaderboard_data
@@ -100,6 +118,7 @@ def clear_leaderboard():
     save_leaderboard(leaderboard_data)
     print("Leaderboard cleared.")
 
+
 def add_to_leaderboard(name, time_taken, answers, category):
     global leaderboard_data, correct_answers_config, PENALTY_PER_INCORRECT, NUM_QUESTIONS_PER_CATEGORY
     category_correct_answers = get_correct_answers_for_category(correct_answers_config, category)
@@ -110,7 +129,7 @@ def add_to_leaderboard(name, time_taken, answers, category):
 
     num_questions = len(category_correct_answers) if category_correct_answers else NUM_QUESTIONS_PER_CATEGORY
 
-    if len(answers) < num_questions: # Check if all questions are answered
+    if len(answers) < num_questions:  # Check if all questions are answered
         disqualified = True
         print(f"Participant {name} disqualified for not answering all questions.")
     else:
@@ -118,7 +137,7 @@ def add_to_leaderboard(name, time_taken, answers, category):
             question_num_str = str(question_num)
             submitted_answer = answers.get(question_num_str)
 
-            if submitted_answer is None: # This condition should not be reached if len(answers) check is correct, but keep it for safety
+            if submitted_answer is None:  # This condition should not be reached if len(answers) check is correct, but keep it for safety
                 penalty_seconds += PENALTY_PER_INCORRECT
                 unanswered_questions_count += 1
             else:
@@ -129,9 +148,9 @@ def add_to_leaderboard(name, time_taken, answers, category):
 
     penalized_time = time_taken + penalty_seconds
 
-    leaderboard_entry = {"name": name, "time": penalized_time, "penalty": penalty_seconds, "category": category, "disqualified": disqualified} # Added disqualified status
+    leaderboard_entry = {"name": name, "time": penalized_time, "penalty": penalty_seconds, "category": category, "disqualified": disqualified}  # Added disqualified status
     leaderboard_data.append(leaderboard_entry)
-    leaderboard_data.sort(key=lambda x: (x["disqualified"], x["time"], x["penalty"])) # Sort by disqualified, then time, then penalty
+    leaderboard_data.sort(key=lambda x: (x["disqualified"], x["time"], x["penalty"]))  # Sort by disqualified, then time, then penalty
     save_leaderboard(leaderboard_data)
     print(f"Added to leaderboard: Name={name}, Time={penalized_time} (Penalized), Category={category}, Disqualified={disqualified}")
 
@@ -141,19 +160,19 @@ def format_time(seconds, disqualified=False):
     secs = int(seconds % 60)
     time_str = "{:02d}:{:02d}:{:02d}".format(hours, minutes, secs)
     if disqualified:
-        return "D: " + time_str # Add "D: " prefix if disqualified
+        return "D: " + time_str  # Add "D: " prefix if disqualified
     return time_str
 
 def generate_leaderboard_csv(leaderboard_data):
-    csv_data = "Rank;Name;Category;Time;Penalty;Final Time;Status\n" # Added Status column
+    csv_data = "Rank;Name;Category;Time;Penalty;Final Time;Status\n"  # Added Status column
     for i, entry in enumerate(leaderboard_data):
         penalty_sec = entry.get("penalty", 0)
         final_time_sec = entry["time"]
         original_time_sec = final_time_sec - penalty_sec if penalty_sec > 0 else final_time_sec
         category = entry.get("category", "N/A")
         disqualified = entry.get("disqualified", False)
-        status = "Disqualified" if disqualified else "Qualified" # Added Status
-        csv_data += f"{i + 1};{entry['name']};{category};{format_time(original_time_sec)};{format_time(penalty_sec)};{format_time(final_time_sec, disqualified)};{status}\n" # Format time with disqualification flag
+        status = "Disqualified" if disqualified else "Qualified"  # Added Status
+        csv_data += f"{i + 1};{entry['name']};{category};{format_time(original_time_sec)};{format_time(penalty_sec)};{format_time(final_time_sec, disqualified)};{status}\n"  # Format time with disqualification flag
 
     return csv_data
 
@@ -185,15 +204,15 @@ def generate_leaderboard_html(leaderboard, selected_category="All Categories"):
     return html_content
 
 def generate_leaderboard_table_html(leaderboard):
-    table_html = """<table><thead><tr><th>Rank</th><th>Name</th><th>Category</th><th>Time</th><th>Penalty</th><th>Final Time</th><th>Status</th></tr></thead><tbody>""" # Added Status column header
+    table_html = """<table><thead><tr><th>Rank</th><th>Name</th><th>Category</th><th>Time</th><th>Penalty</th><th>Final Time</th><th>Status</th></tr></thead><tbody>"""  # Added Status column header
     for i, entry in enumerate(leaderboard):
         penalty_sec = entry.get("penalty", 0)
         final_time_sec = entry["time"]
         original_time_sec = final_time_sec - penalty_sec if penalty_sec > 0 else final_time_sec
         category = entry.get("category", "N/A")
         disqualified = entry.get("disqualified", False)
-        status = "Disqualified" if disqualified else "Qualified" # Determine Status text
-        table_html += f"""<tr><td>{i + 1}</td><td>{entry['name']}</td><td>{category}</td><td>{format_time(original_time_sec)}</td><td>{format_time(penalty_sec)}</td><td>{format_time(final_time_sec, disqualified)}</td><td>{status}</td></tr>""" # Format time with disqualification flag and add status
+        status = "Disqualified" if disqualified else "Qualified"  # Determine Status text
+        table_html += f"""<tr><td>{i + 1}</td><td>{entry['name']}</td><td>{category}</td><td>{format_time(original_time_sec)}</td><td>{format_time(penalty_sec)}</td><td>{format_time(final_time_sec, disqualified)}</td><td>{status}</td></tr>"""  # Format time with disqualification flag and add status
     table_html += """</tbody></table>"""
     return table_html
 
@@ -201,9 +220,43 @@ def generate_admin_html(config):
     penalty = config.get("penalty", 60)
     category_names = CATEGORY_NAMES_ADMIN
     category_config_keys = CATEGORY_NAMES_CONFIG_KEYS
-    admin_page_style = """<style>body { font-family: Arial, sans-serif; background-color: #f4f4f4; color: #333; margin: 0; padding: 20px; }.container { width: 80%; max-width: 800px; margin: 20px auto; background-color: white; padding: 30px; border-radius: 10px; box-shadow: 0 0 20px rgba(0, 0, 0, 0.1); }h1 { text-align: center; color: #4472C4; }h2 { color: #4472C4; margin-top: 25px; border-bottom: 1px solid #eee; padding-bottom: 5px; }label { display: block; margin-top: 15px; font-weight: bold; }input[type="number"], select, input[type="password"] { width: calc(100% - 20px); padding: 10px; margin-top: 8px; margin-bottom: 15px; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box; font-size: 1em; }select { appearance: none; -webkit-appearance: none; -moz-appearance: none; background-image: url('data:image/svg+xml;utf8,<svg fill="black" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M7 10l5 5 5-5z"/><path d="M0 0h24v24H0z" fill="none"/></svg>'); background-repeat: no-repeat; background-position-x: 100%; background-position-y: 5px; }.button-link, .button-link2, .export-button, .reset-button, button[type="submit"] { display: block; width: 200px; max-width: 200px; padding: 12px 25px; margin: 15px auto; background-color: #5cb85c; color: white; text-decoration: none; border-radius: 5px; border: none; cursor: pointer; font-size: 1em; transition: background-color 0.3s ease; text-align: center; box-sizing: border-box; }button:hover, .button-link:hover, .button-link2:hover, .reset-button:hover, .export-button:hover { background-color: #4cae4c; }.button-link { background-color: #428bca; } .button-link:hover { background-color: #3071a9; }.button-link2 { background-color: #5bc0de; color: white; } .button-link2:hover { background-color: #31b0d5; }.reset-button { background-color: #d9534f; } .reset-button:hover { background-color: #c9302c; }.export-button { background-color: orange; } .export-button:hover { background-color: darkorange; }.button-container, .button-container2, .reset-button-container, .export-button-container { text-align: center; margin-top: 20px; }.reset-section { margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee; }.form-group { margin-bottom: 20px; } .form-group:last-child { margin-bottom: 0; }.admin-category-select { margin-bottom: 20px; }.category-answers-box { border: 1px solid #ddd; padding: 15px; margin-bottom: 20px; border-radius: 5px; background-color: #f9f9f9; }</style>"""
-    category_options_html = "".join(['<option value="{}">{}</option>'.format(category_config_keys[i], cat) for i, cat in enumerate(category_names)]) # Use config keys as values
-    html_content = f"""<!DOCTYPE html><html><head><title>ESP32 Admin - Set Correct Answers and Penalty</title>{admin_page_style}<script>
+
+    admin_page_style = """
+    <style>
+    body { font-family: Arial, sans-serif; background-color: #f4f4f4; color: #333; margin: 0; padding: 20px; }
+    .container { width: 80%; max-width: 1200px; /* Increased max-width */ margin: 20px auto; background-color: white; padding: 30px; border-radius: 10px; box-shadow: 0 0 20px rgba(0, 0, 0, 0.1); }
+    h1 { text-align: center; color: #4472C4; }
+    h2 { color: #4472C4; margin-top: 25px; border-bottom: 1px solid #eee; padding-bottom: 5px; }
+    label { display: block; margin-top: 15px; font-weight: bold; }
+    input[type="number"], select, input[type="password"] { width: calc(100% - 20px); padding: 10px; margin-top: 8px; margin-bottom: 15px; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box; font-size: 1em; }
+    select { appearance: none; -webkit-appearance: none; -moz-appearance: none; background-image: url('data:image/svg+xml;utf8,<svg fill="black" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M7 10l5 5 5-5z"/><path d="M0 0h24v24H0z" fill="none"/></svg>'); background-repeat: no-repeat; background-position-x: 100%; background-position-y: 5px; }
+    .button-link, .button-link2, .export-button, .reset-button, button[type="submit"] { display: block; width: 200px; max-width: 200px; padding: 12px 25px; margin: 15px auto; background-color: #5cb85c; color: white; text-decoration: none; border-radius: 5px; border: none; cursor: pointer; font-size: 1em; transition: background-color 0.3s ease; text-align: center; box-sizing: border-box; }
+    button:hover, .button-link:hover, .button-link2:hover, .reset-button:hover, .export-button:hover { background-color: #4cae4c; }
+    .button-link { background-color: #428bca; }
+    .button-link:hover { background-color: #3071a9; }
+    .button-link2 { background-color: #5bc0de; color: white; }
+    .button-link2:hover { background-color: #31b0d5; }
+    .reset-button { background-color: #d9534f; }
+    .reset-button:hover { background-color: #c9302c; }
+    .export-button { background-color: orange; }
+    .export-button:hover { background-color: darkorange; }
+    .button-container, .button-container2, .reset-button-container, .export-button-container { text-align: center; margin-top: 20px; }
+    .reset-section { margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee; }
+    .form-group { margin-bottom: 20px; }
+    .form-group:last-child { margin-bottom: 0; }
+    .category-container { display: flex; justify-content: space-between; flex-wrap: wrap; }
+    .category-section { width: 30%; /* Adjust as needed */ border: 1px solid #ddd; padding: 15px; margin-bottom: 20px; border-radius: 5px; background-color: #f9f9f9; }
+    .category-section h3 { text-align: center; color: #4472C4; }
+     .category-answers-box { margin-top: 10px;}
+    </style>
+    """
+
+    html_content = f"""<!DOCTYPE html>
+    <html>
+    <head>
+        <title>ESP32 Admin - Set Correct Answers and Penalty</title>
+        {admin_page_style}
+        <script>
             function checkPasswordAndReset() {{
                 var password = document.getElementById('resetPassword').value;
                 if (password === '{ADMIN_PASSWORD}') {{
@@ -226,59 +279,6 @@ def generate_admin_html(config):
                 }}
             }}
 
-            function updateQuestionVisibility() {{
-                var selectedCategoryKey = document.getElementById('categorySelect').value;
-                console.log("Selected category key: " + selectedCategoryKey);
-            }}
-
-
-            function onCategoryChange() {{
-                var selectedCategoryKey = document.getElementById('categorySelect').value; // Get category config key
-                console.log("Populating answers for category key: " + selectedCategoryKey);
-                var categoryAnswers = window.adminConfig.categories[selectedCategoryKey];
-                if (!categoryAnswers) {{
-                    categoryAnswers = {{}};
-                }}
-
-                var categoryAnswerPlaceholders = document.getElementById('categoryAnswerPlaceholders');
-                categoryAnswerPlaceholders.innerHTML = ''; // Clear previous answers
-
-                for (let i = 1; i <= 15; i++) {{
-                    var questionNum = String(i);
-                    var currentAnswer = categoryAnswers[questionNum] || '';
-
-                    var questionGroup = document.createElement('div');
-                    questionGroup.className = 'form-group';
-                    questionGroup.id = 'questionGroup' + i;
-
-                    var label = document.createElement('label');
-                    label.setAttribute('for', 'answer_' + i);
-                    label.textContent = 'Question ' + i + ':';
-
-                    var selectElement = document.createElement('select');
-                    selectElement.id = 'answer_' + i;
-                    selectElement.name = 'answer' + i;
-
-                    var answerOptions = ['A', 'B', 'C', 'D', '']; // Options including 'Not Set' (empty string)
-                    var optionTexts = ['A', 'B', 'C', 'D', 'Not Set'];
-
-                    for (let j = 0; j < answerOptions.length; j++) {{
-                        var option = document.createElement('option');
-                        option.value = answerOptions[j];
-                        option.textContent = optionTexts[j];
-                        if (answerOptions[j] === currentAnswer) {{
-                            option.selected = true;
-                        }}
-                        selectElement.appendChild(option);
-                    }}
-
-                    questionGroup.appendChild(label);
-                    questionGroup.appendChild(selectElement);
-                    categoryAnswerPlaceholders.appendChild(questionGroup);
-                }}
-            }}
-
-
             window.addEventListener('load', function() {{
                 window.adminConfig = {{}};
                 try {{
@@ -286,11 +286,91 @@ def generate_admin_html(config):
                 }} catch (e) {{
                     console.error("Error parsing adminConfigJson:", e);
                 }}
-                onCategoryChange(); // Load answers for default category on page load
+                 // No need to call onCategoryChange here, as we're displaying all at once.
             }});
 
+        </script>
+    </head>
+    <body>
+        <div class="container">
+            <h1>Admin - Correct Answers and Penalty</h1>
+            <form action="/save_answers" method="post">
+                <div class="form-group">
+                    <label for="penalty">Penalty per Incorrect Answer (seconds):</label>
+                    <input type="number" id="penalty" name="penalty" value="{penalty}" required>
+                </div>
+                <div style="display:none;" id="adminConfigJson">{json.dumps(config)}</div>
 
-        </script></head><body><div class="container"><h1>Admin - Correct Answers and Penalty</h1><form action="/save_answers" method="post"><div class="form-group"><label for="penalty">Penalty per Incorrect Answer (seconds):</label><input type="number" id="penalty" name="penalty" value="{penalty}" required></div><div class="form-group admin-category-select"><label for="categorySelect">Select Category:</label><select id="categorySelect" name="category" id="categorySelect" onchange="onCategoryChange()">{category_options_html}</select></div><div style="display:none;" id="adminConfigJson">{json.dumps(config)}</div><div id="categoryAnswerPlaceholders"><!-- Correct answers will be loaded here --></div><div class="button-container"><button type="submit" class="button-link2" >Save Settings</button></div></form><div class="export-button-container"><a href="/leaderboard_excel" class="export-button">Export All Categories to Excel</a> <br><a href="/leaderboard_excel_category?category=Category1" class="export-button">Export Category 1 to Excel</a><br><a href="/leaderboard_excel_category?category=Category2" class="export-button">Export Category 2 to Excel</a><br><a href="/leaderboard_excel_category?category=Category3" class="export-button">Export Category 3 to Excel</a></div><div class="reset-section"><h2>Reset Leaderboard</h2><div class="form-group"><label for="resetPassword">Admin Password:</label><input type="password" id="resetPassword" name="resetPassword"></div><div class="reset-button-container"><button onclick="checkPasswordAndReset()" class="reset-button">Reset Leaderboard</button></div></div><div class="button-container2"><a href="/" class="button-link">Back to Leaderboard</a></div></div></body></html>"""
+                <div class="category-container">
+    """
+
+    # Generate HTML for each category
+    for i, category_key in enumerate(category_config_keys):
+        category_name = category_names[i]
+        category_answers = config["categories"].get(category_key, {})
+
+        html_content += f"""
+                    <div class="category-section">
+                        <h3>{category_name}</h3>
+                        <div class="category-answers-box">
+        """
+
+        for q_num in range(1, 16):
+            question_num_str = str(q_num)
+            current_answer = category_answers.get(question_num_str, "")
+            html_content += f"""
+                            <div class="form-group">
+                                <label for="answer_{category_key}_{q_num}">Question {q_num}:</label>
+                                <select id="answer_{category_key}_{q_num}" name="answer_{category_key}_{q_num}">
+            """
+
+            answer_options = ["A", "B", "C", "D", ""]  # Options including "" (Not Set)
+            option_texts = ["A", "B", "C", "D", "Not Set"]
+
+            for j, option_value in enumerate(answer_options):
+                selected = "selected" if option_value == current_answer else ""
+                html_content += f'<option value="{option_value}" {selected}>{option_texts[j]}</option>'
+
+            html_content += f"""
+                                </select>
+                            </div>
+            """
+        html_content += """
+                        </div>
+                    </div>
+        """
+
+    html_content += """
+                </div>
+                <div class="button-container">
+                    <button type="submit" class="button-link2">Save Settings</button>
+                </div>
+            </form>
+
+            <div class="export-button-container">
+                <a href="/leaderboard_excel" class="export-button">Export All Categories to Excel</a> <br>
+                <a href="/leaderboard_excel_category?category=Category1" class="export-button">Export Category 1 to Excel</a><br>
+                <a href="/leaderboard_excel_category?category=Category2" class="export-button">Export Category 2 to Excel</a><br>
+                <a href="/leaderboard_excel_category?category=Category3" class="export-button">Export Category 3 to Excel</a>
+            </div>
+            <div class="reset-section">
+                <h2>Reset Leaderboard</h2>
+                <div class="form-group">
+                    <label for="resetPassword">Admin Password:</label>
+                    <input type="password" id="resetPassword" name="resetPassword">
+                </div>
+                <div class="reset-button-container">
+                    <button onclick="checkPasswordAndReset()" class="reset-button">Reset Leaderboard</button>
+                </div>
+            </div>
+            <div class="button-container2">
+                <a href="/" class="button-link">Back to Leaderboard</a>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
     return html_content
 
 def get_category_name_from_uid_str(uid_str):
@@ -343,22 +423,17 @@ def filter_leaderboard_by_category(leaderboard, category):
         return leaderboard
     else:
         return [entry for entry in leaderboard if entry.get("category") == category]
-
 # --- Serial Listener Thread ---
 def serial_listener():
     global leaderboard_data, correct_answers_config
     try:
         if SERIAL_PORT is None:
-            detected_port = find_serial_port()
-            if detected_port:
-                serial_connection = serial.Serial(detected_port, BAUD_RATE)
-                print(f"Listening on serial port: {detected_port}")
-            else:
-                print("Serial port not found. Serial listener stopped.")
-                return
-        else:
-            serial_connection = serial.Serial(SERIAL_PORT, BAUD_RATE)
-            print(f"Listening on serial port: {SERIAL_PORT}")
+            print("Serial port must be selected before starting the listener.") #This will be selected before starting serial thread
+            return
+
+        serial_connection = serial.Serial(SERIAL_PORT, BAUD_RATE)
+        print(f"Listening on serial port: {SERIAL_PORT}")
+
 
         while True:
             if serial_connection.in_waiting > 0:
@@ -393,31 +468,31 @@ class SimpleRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         global leaderboard_data, correct_answers_config
         path = self.path
-        print(f"do_GET: self.path = '{path}'") # Debug: Print self.path
+        print(f"do_GET: self.path = '{path}'")  # Debug: Print self.path
 
         if "?" in path:
             base_path = path.split("?", 1)[0]
         else:
             base_path = path
-        print(f"do_GET: base_path = '{base_path}'") # Debug: Print base_path
+        print(f"do_GET: base_path = '{base_path}'")  # Debug: Print base_path
 
         if base_path == "/":
-            print("do_GET: Entering path '/' block") # Debug: Entering '/' block
+            print("do_GET: Entering path '/' block")  # Debug: Entering '/' block
             self.handle_leaderboard_page()
         elif base_path == "/admin":
-            print("do_GET: Entering path '/admin' block") # Debug: Entering '/admin' block
+            print("do_GET: Entering path '/admin' block")  # Debug: Entering '/admin' block
             self.handle_admin_page()
         elif base_path == "/leaderboard_table":
-            print("do_GET: Entering path '/leaderboard_table' block") # Debug: Entering '/leaderboard_table' block
+            print("do_GET: Entering path '/leaderboard_table' block")  # Debug: Entering '/leaderboard_table' block
             self.handle_leaderboard_table()
         elif base_path == "/leaderboard_excel":
-            print("do_GET: Entering path '/leaderboard_excel' block") # Debug: Entering '/leaderboard_excel' block
+            print("do_GET: Entering path '/leaderboard_excel' block")  # Debug: Entering '/leaderboard_excel' block
             self.handle_excel_export()
         elif base_path.startswith("/leaderboard_excel_category"):
-            print("do_GET: Entering path '/leaderboard_excel_category' block") # Debug: Entering '/leaderboard_excel_category' block
+            print("do_GET: Entering path '/leaderboard_excel_category' block")  # Debug: Entering '/leaderboard_excel_category' block
             self.handle_excel_category_export()
         else:
-            print("do_GET: No matching path found. Sending 404.") # Debug: No match
+            print("do_GET: No matching path found. Sending 404.")  # Debug: No match
             self.send_error(404)
 
     def do_POST(self):
@@ -427,7 +502,7 @@ class SimpleRequestHandler(BaseHTTPRequestHandler):
         elif path == "/admin_reset":
             self.handle_admin_reset()
         elif path == "/add":
-            self.send_error(405, "Method Not Allowed", "Data should be sent via serial.") # Method Not Allowed
+            self.send_error(405, "Method Not Allowed", "Data should be sent via serial.")  # Method Not Allowed
         else:
             self.send_error(404)
 
@@ -438,7 +513,7 @@ class SimpleRequestHandler(BaseHTTPRequestHandler):
             for param in params:
                 key_value = param.split('=', 1)
                 if key_value[0] == param_name:
-                    return urllib.parse.unquote_plus(key_value[1]) # Decode URL-encoded parameters
+                    return urllib.parse.unquote_plus(key_value[1])  # Decode URL-encoded parameters
         return None
 
     def handle_leaderboard_page(self):
@@ -477,19 +552,22 @@ class SimpleRequestHandler(BaseHTTPRequestHandler):
     def handle_save_answers(self):
         content_length = int(self.headers.get('Content-Length', 0))
         post_data = self.rfile.read(content_length).decode('utf-8')
-        form_data = urllib.parse.parse_qs(post_data) # Use parse_qs to handle multiple values and decode
+        form_data = urllib.parse.parse_qs(post_data)
 
-        updated_penalty = int(form_data.get("penalty", [60])[0]) # Get first item from list, default 60
-        selected_category_key = form_data.get("category", ["Category1"])[0] # Get category config key, default Category1
-        updated_correct_answers = {}
-        for i in range(1, 16):
-            answer_list = form_data.get(f"answer{i}", [""]) # Get answer as list, default empty string
-            answer = answer_list[0] # Take the first answer if multiple somehow submitted
-            if answer:
-                updated_correct_answers[str(i)] = answer
-
+        updated_penalty = int(form_data.get("penalty", [60])[0])
         correct_answers_config["penalty"] = updated_penalty
-        correct_answers_config["categories"][selected_category_key] = updated_correct_answers
+
+        # Iterate through all possible answer fields
+        for category_key in CATEGORY_NAMES_CONFIG_KEYS:
+            updated_correct_answers = {}
+            for q_num in range(1, 16):
+                answer_key = f"answer_{category_key}_{q_num}"
+                answer_list = form_data.get(answer_key, [""])
+                answer = answer_list[0]  # Take the first if multiple
+                if answer:  # Only add if an answer is provided (not "Not Set")
+                    updated_correct_answers[str(q_num)] = answer
+            correct_answers_config["categories"][category_key] = updated_correct_answers
+
         save_correct_answers_config(correct_answers_config)
         self.send_redirect_response("/admin")
 
@@ -526,10 +604,30 @@ class SimpleRequestHandler(BaseHTTPRequestHandler):
         self.send_header("Location", location)
         self.end_headers()
 
+# --- Get Server IP and Show Popup ---
+def get_server_ip():
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        local_ip = s.getsockname()[0]
+        s.close()
+        return local_ip
+    except Exception:
+        return "127.0.0.1"
+
+def show_ip_popup(ip_address, port):
+    """Displays a Tkinter popup with the server's IP address and port."""
+    root = tk.Tk()  # Create a *new* root window for the IP popup
+    root.title("Server Information")
+    message = f"Web server started at:\n\nhttp://{ip_address}:{port}\n\nClick OK to continue running the server."
+    messagebox.showinfo("Server Started", message, parent=root)
+    root.destroy() # Destroy the ip popup
+
+
 # --- Run Web Server ---
-def run_web_server():
-    web_server = HTTPServer((WEB_SERVER_HOST, WEB_SERVER_PORT), SimpleRequestHandler)
-    print(f"Web server started at http://{WEB_SERVER_HOST}:{WEB_SERVER_PORT}")
+def run_web_server(ip_address, port):
+    web_server = HTTPServer((WEB_SERVER_HOST, port), SimpleRequestHandler)
+    print(f"Web server started at http://{ip_address}:{port}")
     try:
         web_server.serve_forever()
     except KeyboardInterrupt:
@@ -538,13 +636,38 @@ def run_web_server():
         web_server.server_close()
         print("Web server stopped.")
 
+
 # --- Main Execution ---
 if __name__ == "__main__":
     load_leaderboard()
     load_correct_answers_config()
 
-    serial_thread = threading.Thread(target=serial_listener)
-    serial_thread.daemon = True
-    serial_thread.start()
+    # 1. Find Serial Port (using Tkinter popup) and create main window
+    root_serial = tk.Tk()
+    root_serial.title("Select Serial Port")
+    port = find_serial_port(root_serial)  # This will now use its *own* mainloop
 
-    run_web_server()
+    if port:
+        SERIAL_PORT = port
+
+        # 2.  Start serial thread
+        serial_thread = threading.Thread(target=serial_listener)
+        serial_thread.daemon = True
+        serial_thread.start()
+
+        # 3. Get and display server IP (in its own popup)
+        local_ip = get_server_ip()
+        show_ip_popup(local_ip, WEB_SERVER_PORT)  # This now creates its own root
+
+        # 4. Start Web Server (in a separate thread)
+        web_server_thread = threading.Thread(target=run_web_server, args=(local_ip, WEB_SERVER_PORT))
+        web_server_thread.daemon = True
+        web_server_thread.start()
+
+        # We don't need a mainloop here anymore, as we handle UI in separate functions
+        # with their own root windows.
+        while True:  # Keep the main thread alive
+            time.sleep(1)
+
+    else:
+       print("No serial port selected. Exiting.") # Error already displayed in find_serial_ports.
