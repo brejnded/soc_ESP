@@ -9,6 +9,7 @@ import urllib.parse
 import socket
 import tkinter as tk
 from tkinter import ttk, messagebox
+import webbrowser 
 
 # --- Configuration ---
 SERIAL_PORT = None  # Automatically detected if None
@@ -72,7 +73,6 @@ def find_serial_port(root):
 
     selected_port_result = None
 
-
     # Create radio buttons for each port
     for i, (port, desc, hwid) in enumerate(ports):
         ttk.Radiobutton(root, text=f"{port} ({desc})", variable=port_var, value=port).pack(anchor=tk.W)
@@ -82,7 +82,6 @@ def find_serial_port(root):
     root.mainloop()  # Start *this* window's mainloop
 
     return selected_port_result
-
 
 def load_leaderboard():
     global leaderboard_data
@@ -211,7 +210,7 @@ def generate_leaderboard_table_html(leaderboard):
         original_time_sec = final_time_sec - penalty_sec if penalty_sec > 0 else final_time_sec
         category = entry.get("category", "N/A")
         disqualified = entry.get("disqualified", False)
-        status = "Disqualified" if disqualified else "Qualified"  # Determine Status text
+        status = "Disqualified" if disqualified else "Qualified" 
         table_html += f"""<tr><td>{i + 1}</td><td>{entry['name']}</td><td>{category}</td><td>{format_time(original_time_sec)}</td><td>{format_time(penalty_sec)}</td><td>{format_time(final_time_sec, disqualified)}</td><td>{status}</td></tr>"""  # Format time with disqualification flag and add status
     table_html += """</tbody></table>"""
     return table_html
@@ -564,7 +563,7 @@ class SimpleRequestHandler(BaseHTTPRequestHandler):
                 answer_key = f"answer_{category_key}_{q_num}"
                 answer_list = form_data.get(answer_key, [""])
                 answer = answer_list[0]  # Take the first if multiple
-                if answer:  # Only add if an answer is provided (not "Not Set")
+                if answer: 
                     updated_correct_answers[str(q_num)] = answer
             correct_answers_config["categories"][category_key] = updated_correct_answers
 
@@ -604,7 +603,7 @@ class SimpleRequestHandler(BaseHTTPRequestHandler):
         self.send_header("Location", location)
         self.end_headers()
 
-# --- Get Server IP and Show Popup ---
+# --- Get IP and Show Popup ---
 def get_server_ip():
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -617,11 +616,25 @@ def get_server_ip():
 
 def show_ip_popup(ip_address, port):
     """Displays a Tkinter popup with the server's IP address and port."""
-    root = tk.Tk()  # Create a *new* root window for the IP popup
+    root = tk.Tk()  
     root.title("Server Information")
-    message = f"Web server started at:\n\nhttp://{ip_address}:{port}\n\nClick OK to continue running the server."
-    messagebox.showinfo("Server Started", message, parent=root)
-    root.destroy() # Destroy the ip popup
+    root.geometry("300x100") 
+
+
+    # IP address as a clickable link
+    message_label = tk.Label(root, text=f"Web server started at:")
+    message_label.pack(pady=(10,0))
+
+    link = tk.Label(root, text=f"http://{ip_address}:{port}", fg="blue", cursor="hand2")
+    link.pack()
+    link.bind("<Button-1>", lambda e: open_url(f"http://{ip_address}:{port}"))
+    
+    root.after(5000, root.destroy)  
+    root.mainloop()
+
+def open_url(url):
+    """Opens the given URL in the default web browser."""
+    webbrowser.open(url)
 
 
 # --- Run Web Server ---
